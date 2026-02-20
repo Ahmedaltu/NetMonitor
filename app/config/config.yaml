@@ -1,0 +1,17 @@
+agent:
+  id: "agent-001"
+  location: "lab"
+  environment: "dev"
+
+interval: 10
+
+exporters:
+  influx:
+    enabled: true
+    url: "http://localhost:8086"
+    org: "net-monitor"
+    bucket: "network"
+
+  prometheus:
+    enabled: true
+    port: 8000
