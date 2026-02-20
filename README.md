@@ -1,25 +1,3 @@
-Excellent.
-Here is a **clean, professional, GitHub-ready README** designed for:
-
-* Recruiters
-* Engineers
-* Research reviewers
-* Open-source contributors
-
-It includes:
-
-* Clear architecture
-* Feature summary
-* Diagrams (Mermaid)
-* Installation steps
-* AI explanation layer
-* Roadmap
-* Technical positioning
-
-You can copy this directly into `README.md`.
-
----
-
 # 🚀 NetMonitor
 
 > Async Network Monitoring Agent with AI-Assisted Diagnostics
