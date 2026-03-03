@@ -39,22 +39,26 @@ def create_app(agent, settings):
 
 
 
-    @app.get("/metrics")
-    async def metrics():
-        return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
-    
-
 
     @app.get("/explain")
     async def explain(window: int = 30):
         summary = fetch_recent_summary(settings, window_minutes=window)
         explanation = generate_explanation(summary)
-
         return {
             "window_minutes": window,
             "summary": summary,
             "analysis": explanation
-       }
+        }
+
+    @app.get("/api/agent/status")
+    async def agent_status(window: str = "5m"):
+        # Map health state to dashboard values
+        health_state = agent.health.state.value if hasattr(agent.health.state, 'value') else str(agent.health.state)
+        return {
+            "agentId": agent.agent_id,
+            "healthState": health_state,
+            "window": window
+        }
 
 
     return app
