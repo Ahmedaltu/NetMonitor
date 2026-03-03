@@ -36,6 +36,7 @@ class Agent:
 
         self.stability = StabilityAnalyzer()
         self.health = AgentHealth()
+        self.latest_metrics = {}  # Store latest collected metrics for API access
 
         self._running = False
 
@@ -93,6 +94,9 @@ class Agent:
 
         # Export metrics
         await self._export(metrics)
+
+        # Store latest metrics for API access
+        self.latest_metrics = metrics.copy()
 
         # If not in hard error, mark healthy
         if self.health.state != AgentState.ERROR:

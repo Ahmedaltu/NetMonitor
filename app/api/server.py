@@ -1,6 +1,7 @@
 # app/api/server.py
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 from fastapi.responses import Response
@@ -25,6 +26,15 @@ def create_app(agent, settings):
         await agent_task
 
     app = FastAPI(lifespan=lifespan)
+
+    # Enable CORS for frontend
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 
     @app.get("/health")
@@ -58,6 +68,38 @@ def create_app(agent, settings):
             "agentId": agent.agent_id,
             "healthState": health_state,
             "window": window
+        }
+
+    @app.get("/api/metrics")
+    async def get_metrics():
+        """Return latest collected metrics for dashboard display."""
+        metrics = agent.latest_metrics
+        return {
+            "latency": metrics.get("latency"),
+            "packet_loss": metrics.get("packet_loss"),
+            "jitter": metrics.get("jitter"),
+            "delay_spread": metrics.get("delay_spread"),
+            "rolling_mean_latency": metrics.get("rolling_mean_latency"),
+            "rolling_std_latency": metrics.get("rolling_std_latency"),
+            "timestamp": metrics.get("timestamp"),
+            "agent_id": metrics.get("agent_id"),
+        }
+
+    @app.get("/api/metrics/history")
+    async def get_metrics_history():
+        """Return metrics history for charts (last 20 data points)."""
+        # For now, return the latest metrics - in production this would query InfluxDB
+        # The frontend will accumulate history client-side
+        metrics = agent.latest_metrics
+        return {
+            "current": {
+                "latency": metrics.get("latency"),
+                "packet_loss": metrics.get("packet_loss"),
+                "jitter": metrics.get("jitter"),
+                "delay_spread": metrics.get("delay_spread"),
+                "rolling_mean_latency": metrics.get("rolling_mean_latency"),
+            },
+            "timestamp": metrics.get("timestamp"),
         }
 
 
