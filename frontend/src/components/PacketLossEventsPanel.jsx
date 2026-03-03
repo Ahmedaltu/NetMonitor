@@ -36,15 +36,15 @@ export function PacketLossEventsPanel({ packetLoss, events }) {
           <div className="space-y-1">
             <div className="flex items-center justify-between text-xs">
               <span className="text-gray-600 dark:text-gray-300">Timeouts</span>
-              <span className="font-medium text-red-600 dark:text-red-400">{events.timeouts}</span>
+              <span className="font-medium text-red-600 dark:text-red-400">{events.timeouts || 0}</span>
             </div>
             <div className="flex items-center justify-between text-xs">
-              <span className="text-gray-600 dark:text-gray-300">Duplicates</span>
-              <span className="font-medium text-yellow-600 dark:text-yellow-400">{events.duplicates}</span>
+              <span className="text-gray-600 dark:text-gray-300">Packet Loss</span>
+              <span className="font-medium text-yellow-600 dark:text-yellow-400">{events.packet_loss_count || 0}</span>
             </div>
             <div className="flex items-center justify-between text-xs">
-              <span className="text-gray-600 dark:text-gray-300">Out of Order</span>
-              <span className="font-medium text-orange-600 dark:text-orange-400">{events.outOfOrder}</span>
+              <span className="text-gray-600 dark:text-gray-300">High Jitter</span>
+              <span className="font-medium text-orange-600 dark:text-orange-400">{events.high_jitter_count || 0}</span>
             </div>
           </div>
         </div>
@@ -59,8 +59,9 @@ export function PacketLossEventsPanel({ packetLoss, events }) {
               <div key={i} className="flex items-center gap-2 text-xs">
                 <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
                   event.type === 'timeout' ? 'bg-red-500' :
-                  event.type === 'duplicate' ? 'bg-yellow-500' :
-                  'bg-orange-500'
+                  event.type === 'packet_loss' ? 'bg-yellow-500' :
+                  event.type === 'high_jitter' ? 'bg-orange-500' :
+                  'bg-gray-500'
                 }`}></span>
                 <span className="text-gray-400 dark:text-gray-500">{event.time}</span>
                 <span className="text-gray-600 dark:text-gray-300 truncate">{event.message}</span>

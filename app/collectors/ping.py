@@ -32,9 +32,13 @@ from app.collectors.base import BaseCollector
 class PingCollector(BaseCollector):
     name = "ping"
 
-    def collect(self):
+    def __init__(self, target: str = None):
+        self.target = target or PING_TARGET
+
+    def collect(self, target: str = None):
+        ping_target = target or self.target
         result = subprocess.run(
-            ["ping", "-n", str(PING_COUNT), PING_TARGET],
+            ["ping", "-n", str(PING_COUNT), ping_target],
             capture_output=True,
             text=True
         )
@@ -46,7 +50,9 @@ class PingCollector(BaseCollector):
                 "latency": None,
                 "packet_loss": 1.0,
                 "jitter": None,
-                "delay_spread": None
+                "delay_spread": None,
+                "target": ping_target,
+                "timeout": True
             }
 
         times = list(map(float, times))
@@ -62,5 +68,7 @@ class PingCollector(BaseCollector):
             "latency": mean_latency,
             "packet_loss": loss_ratio,
             "jitter": jitter,
-            "delay_spread": delay_spread
+            "delay_spread": delay_spread,
+            "target": ping_target,
+            "timeout": False
         }

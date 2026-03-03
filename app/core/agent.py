@@ -7,6 +7,62 @@ from typing import List
 from app.utils.logger import logger
 from app.analytics.stability import StabilityAnalyzer
 from app.core.health import AgentHealth, AgentState
+from collections import deque
+from threading import Lock
+
+
+class NetworkEvents:
+    """Track network events like timeouts, high latency, etc."""
+    
+    def __init__(self, max_events=100):
+        self.timeouts = 0
+        self.high_jitter_count = 0
+        self.packet_loss_count = 0
+        self.recent = deque(maxlen=max_events)
+        self._lock = Lock()
+    
+    def record_timeout(self, target: str):
+        with self._lock:
+            self.timeouts += 1
+            self.recent.appendleft({
+                'type': 'timeout',
+                'time': datetime.utcnow().strftime('%H:%M:%S'),
+                'message': f'Timeout to {target}'
+            })
+    
+    def record_packet_loss(self, target: str, loss_pct: float):
+        with self._lock:
+            self.packet_loss_count += 1
+            self.recent.appendleft({
+                'type': 'packet_loss',
+                'time': datetime.utcnow().strftime('%H:%M:%S'),
+                'message': f'{loss_pct:.1f}% packet loss to {target}'
+            })
+    
+    def record_high_jitter(self, target: str, jitter: float):
+        with self._lock:
+            self.high_jitter_count += 1
+            self.recent.appendleft({
+                'type': 'high_jitter',
+                'time': datetime.utcnow().strftime('%H:%M:%S'),
+                'message': f'High jitter ({jitter:.1f}ms) to {target}'
+            })
+    
+    def to_dict(self):
+        with self._lock:
+            return {
+                'timeouts': self.timeouts,
+                'packet_loss_count': self.packet_loss_count,
+                'high_jitter_count': self.high_jitter_count,
+                'recent': list(self.recent)[:10]
+            }
+    
+    def reset(self):
+        with self._lock:
+            self.timeouts = 0
+            self.high_jitter_count = 0
+            self.packet_loss_count = 0
+            self.recent.clear()
 
 
 class Agent:
@@ -37,8 +93,22 @@ class Agent:
         self.stability = StabilityAnalyzer()
         self.health = AgentHealth()
         self.latest_metrics = {}  # Store latest collected metrics for API access
+        self.events = NetworkEvents()  # Track network events
+        self.current_target = "8.8.8.8"  # Dynamic ping target
+        self._target_lock = Lock()
 
         self._running = False
+    
+    def set_target(self, target: str):
+        """Change the ping target at runtime."""
+        with self._target_lock:
+            self.current_target = target
+            logger.info(f"Ping target changed to: {target}")
+    
+    def get_target(self):
+        """Get current ping target."""
+        with self._target_lock:
+            return self.current_target
 
     # --------------------------------------------------
     # Public Lifecycle
@@ -107,10 +177,14 @@ class Agent:
     # --------------------------------------------------
 
     async def _collect_metrics(self) -> dict:
-        tasks = [
-            asyncio.to_thread(collector.collect)
-            for collector in self.collectors
-        ]
+        target = self.get_target()
+        tasks = []
+        for collector in self.collectors:
+            # Pass target to ping collector
+            if hasattr(collector, 'collect') and collector.name == 'ping':
+                tasks.append(asyncio.to_thread(collector.collect, target))
+            else:
+                tasks.append(asyncio.to_thread(collector.collect))
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -124,7 +198,26 @@ class Agent:
             elif isinstance(result, dict):
                 metrics.update(result)
 
+        # Record events based on metrics
+        self._record_events(metrics, target)
+
         return metrics
+
+    def _record_events(self, metrics: dict, target: str):
+        """Record network events based on collected metrics."""
+        # Check for timeout
+        if metrics.get('timeout'):
+            self.events.record_timeout(target)
+        
+        # Check for packet loss
+        packet_loss = metrics.get('packet_loss', 0)
+        if packet_loss and packet_loss > 0:
+            self.events.record_packet_loss(target, packet_loss * 100)
+        
+        # Check for high jitter (>50ms threshold)
+        jitter = metrics.get('jitter')
+        if jitter and jitter > 50:
+            self.events.record_high_jitter(target, jitter)
 
     # --------------------------------------------------
     # Analytics

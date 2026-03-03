@@ -27,6 +27,21 @@ function fetchMetrics() {
     .then(res => res.ok ? res.json() : Promise.reject('Failed to fetch metrics'));
 }
 
+function fetchEvents() {
+  return fetch(`${API_BASE}/api/events`)
+    .then(res => res.ok ? res.json() : Promise.reject('Failed to fetch events'));
+}
+
+function fetchTarget() {
+  return fetch(`${API_BASE}/api/target`)
+    .then(res => res.ok ? res.json() : Promise.reject('Failed to fetch target'));
+}
+
+function setTarget(target) {
+  return fetch(`${API_BASE}/api/target?target=${encodeURIComponent(target)}`, { method: 'POST' })
+    .then(res => res.ok ? res.json() : Promise.reject('Failed to set target'));
+}
+
 // Generate sparkline from history array
 function generateSparklineFromHistory(history, key, count = 12) {
   if (!history || history.length === 0) {
@@ -86,16 +101,12 @@ export default function App() {
   const [metricsHistory, setMetricsHistory] = useState([]);
 
   // Packet loss and events
-  const [packetLoss, setPacketLoss] = useState(0.02);
+  const [packetLoss, setPacketLoss] = useState(0);
   const [events, setEvents] = useState({
-    timeouts: 3,
-    duplicates: 12,
-    outOfOrder: 5,
-    recent: [
-      { type: 'timeout', time: '19:30:58', message: 'Timeout to 192.168.1.100' },
-      { type: 'duplicate', time: '19:28:12', message: 'Duplicate packet from 10.0.0.1' },
-      { type: 'outOfOrder', time: '19:25:33', message: 'Out of order from gateway' },
-    ]
+    timeouts: 0,
+    packet_loss_count: 0,
+    high_jitter_count: 0,
+    recent: []
   });
 
   // Logs
@@ -314,6 +325,34 @@ export default function App() {
     return () => clearInterval(interval);
   }, [isMonitoring]);
 
+  // Fetch events periodically
+  useEffect(() => {
+    if (!isMonitoring) return;
+
+    const fetchEventsData = () => {
+      fetchEvents()
+        .then(data => {
+          setEvents(data);
+        })
+        .catch(err => {
+          console.error('Failed to fetch events:', err);
+        });
+    };
+
+    fetchEventsData();
+    const interval = setInterval(fetchEventsData, 10000);
+    return () => clearInterval(interval);
+  }, [isMonitoring]);
+
+  // Fetch initial target from backend
+  useEffect(() => {
+    fetchTarget()
+      .then(data => {
+        setMonitoredServer(data.target);
+      })
+      .catch(() => {});
+  }, []);
+
   const handleClearLogs = useCallback(() => {
     setLogs([]);
   }, []);
@@ -329,6 +368,18 @@ export default function App() {
       }
       return !prev;
     });
+  }, []);
+
+  const handleServerChange = useCallback((newServer) => {
+    setMonitoredServer(newServer);
+    // Update backend target
+    setTarget(newServer)
+      .then(data => {
+        console.log('Target updated to:', data.target);
+      })
+      .catch(err => {
+        console.error('Failed to update target:', err);
+      });
   }, []);
 
   return (
@@ -347,7 +398,7 @@ export default function App() {
         monitoringStatus={monitoringStatus}
         isMonitoring={isMonitoring}
         onToggleMonitoring={handleToggleMonitoring}
-        onServerChange={setMonitoredServer}
+        onServerChange={handleServerChange}
       />
       
       <main className="max-w-7xl mx-auto px-4 py-4 space-y-4">

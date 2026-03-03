@@ -30,7 +30,7 @@ def create_app(agent, settings):
     # Enable CORS for frontend
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+        allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174"],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -101,6 +101,33 @@ def create_app(agent, settings):
             },
             "timestamp": metrics.get("timestamp"),
         }
+
+    @app.get("/metrics")
+    async def prometheus_metrics():
+        """Expose metrics in Prometheus format for scraping."""
+        return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+    @app.get("/api/events")
+    async def get_events():
+        """Return network events (timeouts, packet loss, high jitter)."""
+        return agent.events.to_dict()
+
+    @app.post("/api/events/reset")
+    async def reset_events():
+        """Reset event counters."""
+        agent.events.reset()
+        return {"status": "ok"}
+
+    @app.get("/api/target")
+    async def get_target():
+        """Get current ping target."""
+        return {"target": agent.get_target()}
+
+    @app.post("/api/target")
+    async def set_target(target: str):
+        """Set ping target for monitoring."""
+        agent.set_target(target)
+        return {"target": agent.get_target()}
 
 
     return app
