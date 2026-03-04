@@ -7,7 +7,7 @@ interval: 10
 
 exporters:
   influx:
-    enabled: true
+    enabled: false
     url: "http://localhost:8086"
     org: "net-monitor"
     bucket: "network"
