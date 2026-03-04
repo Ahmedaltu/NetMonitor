@@ -18,6 +18,9 @@ It combines deterministic telemetry collection with a local LLM-based diagnostic
 * 🔒 Schema-safe metric normalization
 * ⚙️ Typed configuration (Pydantic + YAML)
 * 🌐 FastAPI server integration
+* 🎨 React-based real-time dashboard
+* 📡 Event tracking (timeouts, packet loss, jitter)
+* 🎯 Dynamic target configuration
 * 🐳 Docker-compatible
 
 ---
@@ -62,13 +65,19 @@ netmonitor/
 │
 ├── app/
 │   ├── core/          # Agent & health state
-│   ├── collectors/    # Metric producers
-│   ├── analytics/     # Derived metrics
+│   ├── collectors/    # Metric producers (ping, traffic)
+│   ├── analytics/     # Derived metrics (latency stats, scoring, stability)
 │   ├── exporters/     # Influx + Prometheus
 │   ├── api/           # FastAPI server
 │   ├── ai/            # LLM integration
 │   ├── config/        # Typed configuration
 │   └── utils/         # Logging utilities
+│
+├── frontend/          # React dashboard
+│   ├── src/
+│   │   ├── components/   # UI components
+│   │   └── App.jsx       # Main app
+│   └── index.html
 │
 ├── README.md
 └── requirements.txt
@@ -161,15 +170,31 @@ No cloud required.
 
 # 🚀 Run the Application
 
+## Backend (Agent + API)
+
 ```bash
 python -m app.main
 ```
+
+The backend will start on port 8000 by default.
+
+## Frontend Dashboard
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The dashboard will start on port 5173 and connect to the backend API.
 
 ---
 
 # 🌐 API Endpoints
 
-## Health
+## Health & Status
+
+### Agent Health
 
 ```
 GET /health
@@ -181,15 +206,89 @@ Returns:
 * Last error
 * Consecutive failures
 
+### Agent Status (Dashboard)
+
+```
+GET /api/agent/status?window=5m
+```
+
+Returns formatted status for dashboard display.
+
 ---
 
-## Prometheus Metrics
+## Metrics
+
+### Latest Metrics
+
+```
+GET /api/metrics
+```
+
+Returns current metrics:
+
+* Latency, packet loss, jitter, delay spread
+* Rolling mean/std latency
+* Timestamp and agent ID
+
+### Metrics History
+
+```
+GET /api/metrics/history
+```
+
+Returns time-series data for charts.
+
+### Prometheus Metrics
 
 ```
 GET /metrics
 ```
 
-Prometheus-compatible metric export.
+Prometheus-compatible metric export for scraping.
+
+---
+
+## Events
+
+### Get Events
+
+```
+GET /api/events
+```
+
+Returns network event counters:
+
+* Timeout events
+* Packet loss events
+* High jitter events
+
+### Reset Events
+
+```
+POST /api/events/reset
+```
+
+Resets all event counters.
+
+---
+
+## Target Configuration
+
+### Get Current Target
+
+```
+GET /api/target
+```
+
+Returns the current ping target being monitored.
+
+### Set Target
+
+```
+POST /api/target
+```
+
+Dynamically change the monitoring target without restart.
 
 ---
 
@@ -212,6 +311,22 @@ Example output:
 
 ---
 
+# 🎨 Frontend Dashboard
+
+The React-based dashboard provides real-time monitoring with:
+
+* **Live Metrics Display**: Latency, packet loss, jitter, delay spread
+* **Network Charts**: Time-series visualization of key metrics
+* **AI Insights Panel**: LLM-generated diagnostics and recommendations
+* **Operational Status**: Agent health state and current target
+* **Event Tracking**: Visual counters for timeouts, packet loss, jitter spikes
+* **Alert Panel**: Real-time alerts based on network conditions
+* **Responsive UI**: Built with React + TailwindCSS
+
+Access at: `http://localhost:5173` (when frontend is running)
+
+---
+
 # 📊 Health State Model
 
 Agent states:
@@ -223,6 +338,30 @@ Agent states:
 * `stopped`
 
 Health transitions automatically based on collector/exporter failures.
+
+---
+
+# 📡 Event Tracking System
+
+The agent tracks and counts network anomalies:
+
+* **Timeout Events**: Failed ping requests
+* **Packet Loss Events**: Significant packet loss detected
+* **High Jitter Events**: Jitter exceeding thresholds
+
+Events are exposed via API and displayed in the dashboard.
+
+---
+
+# 🎯 Dynamic Target Configuration
+
+Change monitoring targets on-the-fly:
+
+```bash
+curl -X POST http://localhost:8000/api/target?target=google.com
+```
+
+No restart required. The agent immediately switches to the new target.
 
 ---
 
@@ -242,6 +381,18 @@ Tags:
 
 ---
 
+# � Analytics Engine
+
+The analytics layer processes raw telemetry into actionable insights:
+
+* **Latency Stats** (`latency_stats.py`): Rolling mean, standard deviation, percentiles
+* **Scoring** (`scoring.py`): Network quality scoring algorithms
+* **Stability** (`stability.py`): Connection stability assessment
+
+Metrics are computed in real-time and exported to InfluxDB/Prometheus.
+
+---
+
 # 🔬 Engineering Highlights
 
 This project demonstrates:
@@ -249,10 +400,13 @@ This project demonstrates:
 * Async concurrency with asyncio
 * Thread-wrapped blocking collectors
 * Clean dependency injection
-* Typed configuration
+* Typed configuration (Pydantic + YAML)
 * Push vs pull monitoring models
 * Health state orchestration
 * Local LLM integration without cloud dependency
+* Real-time frontend with React
+* Event-driven architecture
+* RESTful API design
 * Observability-first system design
 
 ---
