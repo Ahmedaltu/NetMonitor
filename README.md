@@ -7,6 +7,7 @@ NetMonitor is a modular, production-oriented network monitoring agent designed t
 It combines deterministic telemetry collection with a local LLM-based diagnostic layer.
 
 ---
+<img width="1256" height="1114" alt="image" src="https://github.com/user-attachments/assets/88745cc4-d9be-4f8a-8379-90a7fd25cadc" />
 
 ## ✨ Features
 
