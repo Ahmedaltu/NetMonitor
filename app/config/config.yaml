@@ -5,6 +5,31 @@ agent:
 
 interval: 10
 
+ping:
+  target: "8.8.8.8"
+  targets:
+    - "8.8.8.8"
+    - "1.1.1.1"
+  count: 4
+
+ai:
+  url: "http://localhost:11434/api/generate"
+  model: "phi3"
+  timeout: 60
+
+alerts:
+  enabled: true
+  latency_ms:
+    warning: 100
+    critical: 200
+  packet_loss_pct:
+    warning: 5
+    critical: 20
+  jitter_ms:
+    warning: 30
+    critical: 50
+  hysteresis_cycles: 3
+
 exporters:
   influx:
     enabled: false

@@ -6,8 +6,10 @@ from influxdb_client import InfluxDBClient
 from app.utils.logger import logger
 
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
-MODEL_NAME = "phi3"
+# Default values (overridden by settings when available)
+DEFAULT_OLLAMA_URL = "http://localhost:11434/api/generate"
+DEFAULT_MODEL = "phi3"
+DEFAULT_TIMEOUT = 60
 
 
 # -----------------------------------------------------
@@ -74,7 +76,7 @@ def fetch_recent_summary(settings, window_minutes: int = 30) -> dict:
 # LLM Explanation
 # -----------------------------------------------------
 
-def generate_explanation(summary: dict) -> str:
+def generate_explanation(summary: dict, settings=None) -> str:
     """
     Send structured metric summary to local Ollama model.
     Returns natural language explanation.
@@ -82,6 +84,15 @@ def generate_explanation(summary: dict) -> str:
 
     if not summary:
         return "No recent data available for analysis."
+
+    # Read config from settings, fall back to defaults
+    ollama_url = DEFAULT_OLLAMA_URL
+    model_name = DEFAULT_MODEL
+    timeout = DEFAULT_TIMEOUT
+    if settings and hasattr(settings, 'ai'):
+        ollama_url = settings.ai.url
+        model_name = settings.ai.model
+        timeout = settings.ai.timeout
 
     prompt = f"""
 You are a network performance analyst.
@@ -101,13 +112,13 @@ Be concise, technical, and objective.
 
     try:
         response = requests.post(
-            OLLAMA_URL,
+            ollama_url,
             json={
-                "model": MODEL_NAME,
+                "model": model_name,
                 "prompt": prompt,
                 "stream": False
             },
-            timeout=60
+            timeout=timeout
         )
 
         response.raise_for_status()

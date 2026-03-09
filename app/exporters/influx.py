@@ -3,6 +3,7 @@
 import os
 from datetime import datetime
 from influxdb_client import InfluxDBClient, Point
+from influxdb_client.client.write_api import SYNCHRONOUS, WriteOptions
 from app.exporters.base import BaseExporter
 from app.utils.logger import logger
 
@@ -24,9 +25,18 @@ class InfluxExporter(BaseExporter):
             org=self.org
         )
 
-        self.write_api = self.client.write_api()
+        write_options = WriteOptions(
+            batch_size=10,
+            flush_interval=5_000,
+            jitter_interval=1_000,
+            retry_interval=3_000,
+            max_retries=5,
+            max_retry_delay=30_000,
+            exponential_base=2,
+        )
+        self.write_api = self.client.write_api(write_options=write_options)
 
-        logger.info("InfluxExporter initialized")
+        logger.info("InfluxExporter initialized (batch + retry enabled)")
 
     def export(self, metrics: dict):
         point = Point("network_metrics")

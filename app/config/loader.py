@@ -27,4 +27,16 @@ def load_settings(config_path: str = "app/config/config.yaml") -> Settings:
     if os.getenv("INFLUX_URL"):
         settings.exporters.influx.url = os.getenv("INFLUX_URL")
 
+    if os.getenv("PING_TARGET"):
+        settings.ping.target = os.getenv("PING_TARGET")
+
+    if os.getenv("PING_COUNT"):
+        settings.ping.count = int(os.getenv("PING_COUNT"))
+
+    if os.getenv("OLLAMA_URL"):
+        settings.ai.url = os.getenv("OLLAMA_URL")
+
+    if os.getenv("OLLAMA_MODEL"):
+        settings.ai.model = os.getenv("OLLAMA_MODEL")
+
     return settings

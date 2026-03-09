@@ -4,8 +4,9 @@ import { MetricsGrid } from './components/MetricsCard';
 import { NetworkChart } from './components/NetworkChart';
 import { PacketLossEventsPanel } from './components/PacketLossEventsPanel';
 import { LogStatusPanel } from './components/LogStatusPanel';
+import { AlertsPanel } from './components/AlertsPanel';
 
-const API_BASE = 'http://localhost:8000';
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
 function fetchAgentStatus(timeWindow) {
   return fetch(`${API_BASE}/api/agent/status?window=${timeWindow}`)
@@ -40,6 +41,17 @@ function fetchTarget() {
 function setTarget(target) {
   return fetch(`${API_BASE}/api/target?target=${encodeURIComponent(target)}`, { method: 'POST' })
     .then(res => res.ok ? res.json() : Promise.reject('Failed to set target'));
+}
+
+function fetchHistory(target) {
+  const params = target ? `?target=${encodeURIComponent(target)}` : '';
+  return fetch(`${API_BASE}/api/metrics/history${params}`)
+    .then(res => res.ok ? res.json() : Promise.reject('Failed to fetch history'));
+}
+
+function fetchTargets() {
+  return fetch(`${API_BASE}/api/targets`)
+    .then(res => res.ok ? res.json() : Promise.reject('Failed to fetch targets'));
 }
 
 // Generate sparkline from history array
@@ -81,6 +93,7 @@ export default function App() {
   const [monitoredServer, setMonitoredServer] = useState('8.8.8.8');
   const [monitoringStatus, setMonitoringStatus] = useState('stable'); // stable, unstable, disconnected
   const [isMonitoring, setIsMonitoring] = useState(true);
+  const [targets, setTargets] = useState([]);  // Multi-target list from backend
 
   // KPI Metrics (6 cards)
   const [metrics, setMetrics] = useState([
@@ -108,6 +121,9 @@ export default function App() {
     high_jitter_count: 0,
     recent: []
   });
+
+  // Alerts derived from events
+  const [alerts, setAlerts] = useState([]);
 
   // Logs
   const [logs, setLogs] = useState(generateInitialLogs());
@@ -222,6 +238,7 @@ export default function App() {
               delay_spread: data.delay_spread,
               rolling_mean: data.rolling_mean_latency,
               rolling_std: data.rolling_std_latency,
+              quality_score: data.quality_score,
             }].slice(-30);
             
             // Update chart data from history
@@ -295,6 +312,15 @@ export default function App() {
                 change: '0%',
                 sparkline: generateSparklineFromHistory(newHistory, 'rolling_std')
               },
+              { 
+                type: data.quality_score >= 80 ? 'latency' : data.quality_score >= 50 ? 'jitter' : 'packetLoss', 
+                label: 'Quality Score', 
+                value: data.quality_score?.toFixed(1) ?? '--', 
+                unit: '/100', 
+                trend: getTrend(prevData?.quality_score, data.quality_score),
+                change: '0%',
+                sparkline: generateSparklineFromHistory(newHistory, 'quality_score')
+              },
             ]);
             
             // Update packet loss for the gauge panel
@@ -353,8 +379,69 @@ export default function App() {
       .catch(() => {});
   }, []);
 
+  // Fetch targets list periodically
+  useEffect(() => {
+    if (!isMonitoring) return;
+    const load = () => {
+      fetchTargets()
+        .then(data => setTargets(data.targets || []))
+        .catch(() => {});
+    };
+    load();
+    const interval = setInterval(load, 15000);
+    return () => clearInterval(interval);
+  }, [isMonitoring]);
+
+  // Load server-side metrics history on mount
+  useEffect(() => {
+    fetchHistory()
+      .then(data => {
+        if (data.history && data.history.length > 0) {
+          const serverHistory = data.history.map(m => ({
+            time: m.timestamp ? new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '',
+            latency: m.latency,
+            packet_loss: m.packet_loss,
+            jitter: m.jitter,
+            delay_spread: m.delay_spread,
+            rolling_mean: m.rolling_mean_latency,
+            rolling_std: m.rolling_std_latency,
+          }));
+          setMetricsHistory(serverHistory);
+          setLatencyData(generateChartDataFromHistory(serverHistory, 'latency'));
+          setJitterData(generateChartDataFromHistory(serverHistory, 'jitter'));
+          setPacketLossData(generateChartDataFromHistory(serverHistory, 'packet_loss'));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Convert events to alerts for AlertsPanel
+  useEffect(() => {
+    if (events.recent && events.recent.length > 0) {
+      const newAlerts = events.recent.map((event, index) => ({
+        id: `${event.type}-${event.time}-${index}`,
+        severity: event.type === 'timeout' ? 'critical' : 'warning',
+        time: event.time,
+        title: event.type === 'timeout' ? 'Connection Timeout' :
+               event.type === 'packet_loss' ? 'Packet Loss Detected' : 'High Jitter',
+        message: event.message,
+      }));
+      setAlerts(newAlerts);
+    } else {
+      setAlerts([]);
+    }
+  }, [events]);
+
   const handleClearLogs = useCallback(() => {
     setLogs([]);
+  }, []);
+
+  const handleDismissAlert = useCallback((alertId) => {
+    setAlerts(prev => prev.filter(a => a.id !== alertId));
+  }, []);
+
+  const handleClearAlerts = useCallback(() => {
+    setAlerts([]);
   }, []);
 
   const handleToggleMonitoring = useCallback(() => {
@@ -382,6 +469,30 @@ export default function App() {
       });
   }, []);
 
+  const handleTargetSelect = useCallback((target) => {
+    setMonitoredServer(target);
+    setTarget(target)
+      .then(() => fetchHistory(target))
+      .then(data => {
+        if (data.history && data.history.length > 0) {
+          const serverHistory = data.history.map(m => ({
+            time: m.timestamp ? new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '',
+            latency: m.latency,
+            packet_loss: m.packet_loss,
+            jitter: m.jitter,
+            delay_spread: m.delay_spread,
+            rolling_mean: m.rolling_mean_latency,
+            rolling_std: m.rolling_std_latency,
+          }));
+          setMetricsHistory(serverHistory);
+          setLatencyData(generateChartDataFromHistory(serverHistory, 'latency'));
+          setJitterData(generateChartDataFromHistory(serverHistory, 'jitter'));
+          setPacketLossData(generateChartDataFromHistory(serverHistory, 'packet_loss'));
+        }
+      })
+      .catch(err => console.error('Failed to switch target:', err));
+  }, []);
+
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900 transition-colors">
       {/* --------------------------------------------------------- */}
@@ -399,6 +510,8 @@ export default function App() {
         isMonitoring={isMonitoring}
         onToggleMonitoring={handleToggleMonitoring}
         onServerChange={handleServerChange}
+        targets={targets}
+        onTargetSelect={handleTargetSelect}
       />
       
       <main className="max-w-7xl mx-auto px-4 py-4 space-y-4">
@@ -440,6 +553,15 @@ export default function App() {
             events={events}
           />
         </div>
+
+        {/* --------------------------------------------------------- */}
+        {/* ALERTS PANEL                                             */}
+        {/* --------------------------------------------------------- */}
+        <AlertsPanel
+          alerts={alerts}
+          onDismiss={handleDismissAlert}
+          onClearAll={handleClearAlerts}
+        />
 
         {/* --------------------------------------------------------- */}
         {/* AI ANALYSIS PANEL                                        */}

@@ -26,14 +26,23 @@ from app.utils.logger import logger
 def main():
     settings = load_settings()
 
-    collectors = load_plugins()
+    collectors = load_plugins(settings)
     exporters = load_exporters(settings)
+
+    # Build targets list: merge ping.targets with ping.target
+    targets = list(settings.ping.targets) if settings.ping.targets else []
+    if settings.ping.target and settings.ping.target not in targets:
+        targets.insert(0, settings.ping.target)
+    if not targets:
+        targets = ["8.8.8.8"]
 
     agent = Agent(
         agent_id=settings.agent.id,
         collectors=collectors,
         exporters=exporters,
-        interval=settings.interval
+        interval=settings.interval,
+        alerts_config=settings.alerts,
+        targets=targets,
     )
 
     app = create_app(agent, settings)

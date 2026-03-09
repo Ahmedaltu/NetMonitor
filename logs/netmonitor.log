@@ -469,3 +469,73 @@
 2026-03-05 00:04:26,390 [INFO] NetMonitor: Starting FastAPI server...
 2026-03-05 00:04:26,428 [INFO] NetMonitor: Starting Agent background task...
 2026-03-05 00:04:26,429 [INFO] NetMonitor:  Agent agent-001 starting...
+2026-03-09 02:41:50,448 [INFO] NetMonitor: Ping target changed to: 1.1.1.1
+2026-03-09 02:41:50,476 [ERROR] NetMonitor: Collector ping failed: fail
+2026-03-09 02:41:50,476 [WARNING] NetMonitor: No metrics collected this cycle
+2026-03-09 02:41:54,013 [INFO] NetMonitor: PrometheusExporter initialized
+2026-03-09 02:41:54,014 [INFO] NetMonitor: PrometheusExporter initialized
+2026-03-09 02:41:54,017 [INFO] NetMonitor: PrometheusExporter initialized
+2026-03-09 02:41:54,038 [INFO] NetMonitor: PrometheusExporter initialized
+2026-03-09 02:41:54,060 [INFO] NetMonitor: PrometheusExporter initialized
+2026-03-09 02:41:54,082 [WARNING] NetMonitor: No exporters enabled in configuration
+2026-03-09 02:41:54,084 [INFO] NetMonitor: PrometheusExporter initialized
+2026-03-09 02:41:54,084 [INFO] NetMonitor: PrometheusExporter enabled
+2026-03-09 02:41:54,087 [ERROR] NetMonitor: Failed to initialize InfluxExporter: INFLUX_TOKEN environment variable not set
+2026-03-09 02:42:45,260 [INFO] NetMonitor: Ping target changed to: 1.1.1.1
+2026-03-09 02:42:45,288 [ERROR] NetMonitor: Collector ping failed: fail
+2026-03-09 02:42:45,289 [WARNING] NetMonitor: No metrics collected this cycle
+2026-03-09 02:42:48,663 [INFO] NetMonitor: PrometheusExporter initialized
+2026-03-09 02:42:48,665 [INFO] NetMonitor: PrometheusExporter initialized
+2026-03-09 02:42:48,668 [INFO] NetMonitor: PrometheusExporter initialized
+2026-03-09 02:42:48,669 [INFO] NetMonitor: PrometheusExporter initialized
+2026-03-09 02:42:48,671 [INFO] NetMonitor: PrometheusExporter initialized
+2026-03-09 02:42:48,672 [WARNING] NetMonitor: No exporters enabled in configuration
+2026-03-09 02:42:48,674 [INFO] NetMonitor: PrometheusExporter initialized
+2026-03-09 02:42:48,674 [INFO] NetMonitor: PrometheusExporter enabled
+2026-03-09 02:42:48,676 [ERROR] NetMonitor: Failed to initialize InfluxExporter: INFLUX_TOKEN environment variable not set
+2026-03-09 02:43:19,878 [INFO] NetMonitor: Ping target changed to: 1.1.1.1
+2026-03-09 02:43:19,912 [ERROR] NetMonitor: Collector ping failed: fail
+2026-03-09 02:43:19,912 [WARNING] NetMonitor: No metrics collected this cycle
+2026-03-09 02:43:23,231 [INFO] NetMonitor: PrometheusExporter initialized
+2026-03-09 02:43:23,232 [INFO] NetMonitor: PrometheusExporter initialized
+2026-03-09 02:43:23,233 [INFO] NetMonitor: PrometheusExporter initialized
+2026-03-09 02:43:23,235 [INFO] NetMonitor: PrometheusExporter initialized
+2026-03-09 02:43:23,235 [INFO] NetMonitor: PrometheusExporter initialized
+2026-03-09 02:43:23,236 [WARNING] NetMonitor: No exporters enabled in configuration
+2026-03-09 02:43:23,237 [INFO] NetMonitor: PrometheusExporter initialized
+2026-03-09 02:43:23,237 [INFO] NetMonitor: PrometheusExporter enabled
+2026-03-09 02:43:23,239 [ERROR] NetMonitor: Failed to initialize InfluxExporter: INFLUX_TOKEN environment variable not set
+2026-03-09 02:56:22,423 [INFO] NetMonitor: Ping target changed to: 1.1.1.1
+2026-03-09 02:56:22,437 [ERROR] NetMonitor: Collector ping failed: fail
+2026-03-09 02:56:22,438 [WARNING] NetMonitor: No metrics collected this cycle
+2026-03-09 02:56:22,440 [INFO] NetMonitor: Target added: 9.9.9.9
+2026-03-09 02:56:22,441 [INFO] NetMonitor: Target removed: 1.1.1.1
+2026-03-09 02:56:22,443 [INFO] NetMonitor: Ping target changed to: 8.8.8.8
+2026-03-09 02:56:22,443 [INFO] NetMonitor: Target removed: 8.8.8.8
+2026-03-09 02:56:22,443 [INFO] NetMonitor: Ping target changed to: 9.9.9.9
+2026-03-09 02:56:25,786 [INFO] NetMonitor: PrometheusExporter initialized
+2026-03-09 02:56:25,787 [INFO] NetMonitor: PrometheusExporter initialized
+2026-03-09 02:56:25,787 [INFO] NetMonitor: PrometheusExporter initialized
+2026-03-09 02:56:25,788 [INFO] NetMonitor: PrometheusExporter initialized
+2026-03-09 02:56:25,789 [INFO] NetMonitor: PrometheusExporter initialized
+2026-03-09 02:56:25,790 [WARNING] NetMonitor: No exporters enabled in configuration
+2026-03-09 02:56:25,791 [INFO] NetMonitor: PrometheusExporter initialized
+2026-03-09 02:56:25,791 [INFO] NetMonitor: PrometheusExporter enabled
+2026-03-09 02:56:25,794 [ERROR] NetMonitor: Failed to initialize InfluxExporter: INFLUX_TOKEN environment variable not set
+2026-03-09 02:56:42,901 [INFO] NetMonitor: Ping target changed to: 1.1.1.1
+2026-03-09 02:56:42,933 [ERROR] NetMonitor: Collector ping failed: fail
+2026-03-09 02:56:42,933 [WARNING] NetMonitor: No metrics collected this cycle
+2026-03-09 02:56:42,936 [INFO] NetMonitor: Target added: 9.9.9.9
+2026-03-09 02:56:42,937 [INFO] NetMonitor: Target removed: 1.1.1.1
+2026-03-09 02:56:42,939 [INFO] NetMonitor: Ping target changed to: 8.8.8.8
+2026-03-09 02:56:42,939 [INFO] NetMonitor: Target removed: 8.8.8.8
+2026-03-09 02:56:42,940 [INFO] NetMonitor: Ping target changed to: 9.9.9.9
+2026-03-09 02:56:46,340 [INFO] NetMonitor: PrometheusExporter initialized
+2026-03-09 02:56:46,341 [INFO] NetMonitor: PrometheusExporter initialized
+2026-03-09 02:56:46,341 [INFO] NetMonitor: PrometheusExporter initialized
+2026-03-09 02:56:46,343 [INFO] NetMonitor: PrometheusExporter initialized
+2026-03-09 02:56:46,343 [INFO] NetMonitor: PrometheusExporter initialized
+2026-03-09 02:56:46,344 [WARNING] NetMonitor: No exporters enabled in configuration
+2026-03-09 02:56:46,345 [INFO] NetMonitor: PrometheusExporter initialized
+2026-03-09 02:56:46,345 [INFO] NetMonitor: PrometheusExporter enabled
+2026-03-09 02:56:46,348 [ERROR] NetMonitor: Failed to initialize InfluxExporter: INFLUX_TOKEN environment variable not set

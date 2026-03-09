@@ -23,7 +23,9 @@ export function Header({
   monitoringStatus,
   isMonitoring,
   onToggleMonitoring,
-  onServerChange
+  onServerChange,
+  targets,
+  onTargetSelect
 }) {
   const healthColor = healthColors[healthState?.toLowerCase()] || 'bg-gray-400';
   const statusConfig = monitoringStatusConfig[monitoringStatus] || monitoringStatusConfig.disconnected;
@@ -64,6 +66,21 @@ export function Header({
             <span className="text-sm">{statusConfig.emoji}</span>
             <span className="text-xs text-white/90">{statusConfig.label}</span>
           </div>
+
+          {/* Target Selector Dropdown */}
+          {targets && targets.length > 1 && (
+            <select
+              className="bg-white/10 border border-white/20 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:ring-2 focus:ring-white/30"
+              value={monitoredServer || ''}
+              onChange={e => onTargetSelect?.(e.target.value)}
+            >
+              {targets.map(t => (
+                <option key={t.target} value={t.target} className="text-gray-800">
+                  {t.target} {t.quality_score != null ? `(${t.quality_score.toFixed(0)})` : ''}
+                </option>
+              ))}
+            </select>
+          )}
 
           {/* Start/Stop Button */}
           <button

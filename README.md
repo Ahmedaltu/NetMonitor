@@ -303,7 +303,6 @@ Ollama runs locally at `http://localhost:11434`. No cloud required.
 netmonitor/
 ├── app/
 │   ├── main.py              # Entry point
-│   ├── influx_client.py     # InfluxDB client wrapper
 │   ├── core/
 │   │   ├── agent.py         # Async agent orchestration
 │   │   ├── health.py        # Health state machine

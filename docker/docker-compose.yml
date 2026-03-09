@@ -1,0 +1,137 @@
+# NetMonitor Full Stack - Docker Compose
+# Usage: docker compose up -d
+# Requires: .env file with secrets (see .env.example)
+
+services:
+  # ── NetMonitor Agent + API ──────────────────────────────────
+  netmonitor:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: netmonitor
+    user: "1000:1000"
+    ports:
+      - "8000:8000"
+    environment:
+      - AGENT_ID=${AGENT_ID:-agent-001}
+      - INTERVAL=${INTERVAL:-10}
+      - PING_TARGET=${PING_TARGET:-8.8.8.8}
+      - PING_COUNT=${PING_COUNT:-4}
+      - INFLUX_URL=http://influxdb:8086
+      - INFLUX_TOKEN=${INFLUX_TOKEN:-netmonitor-dev-token}
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - netmonitor-net
+    restart: unless-stopped
+
+  # ── InfluxDB (time-series storage) ─────────────────────────
+  influxdb:
+    image: influxdb:2.7
+    container_name: netmonitor-influxdb
+    user: "1000:1000"
+    ports:
+      - "8086:8086"
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUX_USER:-admin}
+      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUX_PASSWORD:-netmonitor123}
+      - DOCKER_INFLUXDB_INIT_ORG=net-monitor
+      - DOCKER_INFLUXDB_INIT_BUCKET=network
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUX_TOKEN:-netmonitor-dev-token}
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - netmonitor-net
+    restart: unless-stopped
+
+  # ── Prometheus (metrics scraping) ──────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: netmonitor-prometheus
+    user: "1000:1000"
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      netmonitor:
+        condition: service_healthy
+    networks:
+      - netmonitor-net
+    restart: unless-stopped
+
+  # ── Grafana (dashboards) ───────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: netmonitor-grafana
+    user: "1000:1000"
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-netmonitor}
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    depends_on:
+      influxdb:
+        condition: service_healthy
+      prometheus:
+        condition: service_healthy
+    networks:
+      - netmonitor-net
+    restart: unless-stopped
+
+  # ── Ollama (local LLM for AI analysis) ─────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: netmonitor-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - netmonitor-net
+    restart: unless-stopped
+
+volumes:
+  influxdb-data:
+  prometheus-data:
+  grafana-data:
+  ollama-data:
+
+networks:
+  netmonitor-net:
+    driver: bridge
