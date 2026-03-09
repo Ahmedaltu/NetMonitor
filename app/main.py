@@ -1,17 +1,3 @@
-import asyncio
-
-INTERVAL_SECONDS = 10  # Default value for test patching compatibility
-
-async def main_loop():
-    """
-    Minimal async loop for test compatibility.
-    """
-    try:
-        while True:
-            await asyncio.sleep(INTERVAL_SECONDS)
-    except KeyboardInterrupt:
-        pass
-INTERVAL_SECONDS = 10  # Default value for test patching compatibility
 # app/main.py
 
 import uvicorn
@@ -19,6 +5,7 @@ from app.config.loader import load_settings
 from app.core.agent import Agent
 from app.collectors import load_plugins
 from app.exporters.manager import load_exporters
+from app.notifications.webhook import WebhookNotifier
 from app.api.server import create_app
 from app.utils.logger import logger
 
@@ -36,6 +23,12 @@ def main():
     if not targets:
         targets = ["8.8.8.8"]
 
+    # Webhook notifier
+    notifier = None
+    if settings.notifications and settings.notifications.webhook and settings.notifications.webhook.enabled:
+        notifier = WebhookNotifier(settings.notifications.webhook)
+        logger.info("Webhook notifications enabled → %s", settings.notifications.webhook.url)
+
     agent = Agent(
         agent_id=settings.agent.id,
         collectors=collectors,
@@ -43,6 +36,8 @@ def main():
         interval=settings.interval,
         alerts_config=settings.alerts,
         targets=targets,
+        notifier=notifier,
+        traceroute_config=settings.traceroute,
     )
 
     app = create_app(agent, settings)

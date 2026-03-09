@@ -216,5 +216,65 @@ def create_app(agent, settings):
         agent.set_target(target)
         return {"target": agent.get_target()}
 
+    # ── Traceroute endpoints ──────────────────────────────────
+    @app.post("/api/traceroute")
+    async def traceroute(target: str | None = None, request: Request = None):
+        """Run on-demand traceroute to a target."""
+        _check_api_key(request)
+        t = target or agent.get_target()
+        if not _validate_target(t):
+            raise HTTPException(status_code=400, detail="Invalid target.")
+        result = await agent.run_traceroute(t)
+        return {
+            "target": t,
+            "traceroute": {
+                "target": t,
+                "hops": result.get("traceroute_hops", []),
+                "hop_count": result.get("traceroute_hop_count", 0),
+                "complete": result.get("traceroute_complete", False),
+            },
+        }
+
+    @app.get("/api/traceroute/latest")
+    async def traceroute_latest(target: str | None = None):
+        """Return last cached traceroute result."""
+        if target:
+            data = agent.latest_traceroute.get(target)
+            return {"target": target, "traceroute": data}
+        return {"traceroutes": agent.latest_traceroute}
+
+    # ── Probe result endpoints ────────────────────────────────
+    @app.get("/api/probes/http")
+    async def http_probes():
+        """Return latest HTTP probe results from collector metrics."""
+        m = agent.latest_metrics
+        probes = m.get("http_probes", {})
+        return {"probes": probes}
+
+    @app.get("/api/probes/dns")
+    async def dns_probes():
+        """Return latest DNS probe results from collector metrics."""
+        m = agent.latest_metrics
+        dns = m.get("dns_probes", {})
+        return {"probes": dns}
+
+    # ── Notification test endpoint ────────────────────────────
+    @app.post("/api/notifications/test")
+    async def test_notification(request: Request):
+        """Send a test webhook notification."""
+        _check_api_key(request)
+        if not agent.notifier:
+            raise HTTPException(status_code=400, detail="No webhook notifier configured.")
+        test_alert = {
+            "severity": "info",
+            "metric": "test",
+            "actual_value": 0,
+            "message": "Test notification from NetMonitor",
+        }
+        try:
+            await asyncio.to_thread(agent.notifier.notify, "__test__", test_alert)
+            return {"status": "sent"}
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
 
     return app

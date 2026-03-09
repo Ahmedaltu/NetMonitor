@@ -35,6 +35,32 @@ class AlertsConfig(BaseModel):
     hysteresis_cycles: int = 3
 
 
+class HttpProbeEntry(BaseModel):
+    url: str
+    expected_status: int = 200
+    timeout: int = 5
+
+
+class DnsProbeEntry(BaseModel):
+    hostname: str
+    timeout: int = 3
+
+
+class TracerouteConfig(BaseModel):
+    enabled: bool = False
+    interval_cycles: int = 6  # run every N agent cycles
+
+
+class NotificationsWebhookConfig(BaseModel):
+    enabled: bool = False
+    url: str = ""
+    timeout: int = 10
+
+
+class NotificationsConfig(BaseModel):
+    webhook: NotificationsWebhookConfig = NotificationsWebhookConfig()
+
+
 class ExporterInfluxConfig(BaseModel):
     enabled: bool = True
     url: str = "http://localhost:8086"
@@ -58,4 +84,8 @@ class Settings(BaseModel):
     ping: PingConfig = PingConfig()
     ai: AIConfig = AIConfig()
     alerts: AlertsConfig = AlertsConfig()
+    notifications: NotificationsConfig = NotificationsConfig()
+    http_probes: list[HttpProbeEntry] = []
+    dns_probes: list[DnsProbeEntry] = []
+    traceroute: TracerouteConfig = TracerouteConfig()
     exporters: ExportersConfig

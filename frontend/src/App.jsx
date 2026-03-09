@@ -5,6 +5,9 @@ import { NetworkChart } from './components/NetworkChart';
 import { PacketLossEventsPanel } from './components/PacketLossEventsPanel';
 import { LogStatusPanel } from './components/LogStatusPanel';
 import { AlertsPanel } from './components/AlertsPanel';
+import { TargetManager } from './components/TargetManager';
+import { HttpProbesPanel, DnsProbesPanel } from './components/ProbesPanel';
+import { TraceroutePanel } from './components/TraceroutePanel';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
@@ -52,6 +55,26 @@ function fetchHistory(target) {
 function fetchTargets() {
   return fetch(`${API_BASE}/api/targets`)
     .then(res => res.ok ? res.json() : Promise.reject('Failed to fetch targets'));
+}
+
+function addTarget(target) {
+  return fetch(`${API_BASE}/api/targets/add?target=${encodeURIComponent(target)}`, { method: 'POST' })
+    .then(res => res.ok ? res.json() : Promise.reject('Failed to add target'));
+}
+
+function removeTarget(target) {
+  return fetch(`${API_BASE}/api/targets/remove?target=${encodeURIComponent(target)}`, { method: 'POST' })
+    .then(res => res.ok ? res.json() : Promise.reject('Failed to remove target'));
+}
+
+function fetchHttpProbes() {
+  return fetch(`${API_BASE}/api/probes/http`)
+    .then(res => res.ok ? res.json() : Promise.reject('Failed to fetch HTTP probes'));
+}
+
+function fetchDnsProbes() {
+  return fetch(`${API_BASE}/api/probes/dns`)
+    .then(res => res.ok ? res.json() : Promise.reject('Failed to fetch DNS probes'));
 }
 
 // Generate sparkline from history array
@@ -142,6 +165,10 @@ export default function App() {
     loading: false,
     error: null
   });
+
+  // Probe results
+  const [httpProbes, setHttpProbes] = useState({});
+  const [dnsProbes, setDnsProbes] = useState({});
 
   useEffect(() => {
     if (darkMode) {
@@ -370,6 +397,18 @@ export default function App() {
     return () => clearInterval(interval);
   }, [isMonitoring]);
 
+  // Fetch probe results periodically
+  useEffect(() => {
+    if (!isMonitoring) return;
+    const loadProbes = () => {
+      fetchHttpProbes().then(d => setHttpProbes(d.probes || {})).catch(() => {});
+      fetchDnsProbes().then(d => setDnsProbes(d.probes || {})).catch(() => {});
+    };
+    loadProbes();
+    const interval = setInterval(loadProbes, 15000);
+    return () => clearInterval(interval);
+  }, [isMonitoring]);
+
   // Fetch initial target from backend
   useEffect(() => {
     fetchTarget()
@@ -493,6 +532,20 @@ export default function App() {
       .catch(err => console.error('Failed to switch target:', err));
   }, []);
 
+  const handleAddTarget = useCallback((target) => {
+    addTarget(target)
+      .then(() => fetchTargets())
+      .then(data => setTargets(data.targets || []))
+      .catch(err => console.error('Failed to add target:', err));
+  }, []);
+
+  const handleRemoveTarget = useCallback((target) => {
+    removeTarget(target)
+      .then(() => fetchTargets())
+      .then(data => setTargets(data.targets || []))
+      .catch(err => console.error('Failed to remove target:', err));
+  }, []);
+
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900 transition-colors">
       {/* --------------------------------------------------------- */}
@@ -515,6 +568,17 @@ export default function App() {
       />
       
       <main className="max-w-7xl mx-auto px-4 py-4 space-y-4">
+        {/* --------------------------------------------------------- */}
+        {/* TARGET MANAGER                                           */}
+        {/* --------------------------------------------------------- */}
+        <TargetManager
+          targets={targets}
+          activeTarget={monitoredServer}
+          onSelect={handleTargetSelect}
+          onAdd={handleAddTarget}
+          onRemove={handleRemoveTarget}
+        />
+
         {/* --------------------------------------------------------- */}
         {/* KPI CARDS (6 live indicators)                            */}
         {/* --------------------------------------------------------- */}
@@ -562,6 +626,19 @@ export default function App() {
           onDismiss={handleDismissAlert}
           onClearAll={handleClearAlerts}
         />
+
+        {/* --------------------------------------------------------- */}
+        {/* TRACEROUTE PANEL                                         */}
+        {/* --------------------------------------------------------- */}
+        <TraceroutePanel target={monitoredServer} />
+
+        {/* --------------------------------------------------------- */}
+        {/* HTTP + DNS PROBES                                        */}
+        {/* --------------------------------------------------------- */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <HttpProbesPanel probes={httpProbes} />
+          <DnsProbesPanel probes={dnsProbes} />
+        </div>
 
         {/* --------------------------------------------------------- */}
         {/* AI ANALYSIS PANEL                                        */}

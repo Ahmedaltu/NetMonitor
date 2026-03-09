@@ -30,6 +30,25 @@ alerts:
     critical: 50
   hysteresis_cycles: 3
 
+notifications:
+  webhook:
+    enabled: false
+    url: ""  # e.g. https://hooks.slack.com/services/...
+    timeout: 10
+
+http_probes: []
+  # - url: "https://example.com"
+  #   expected_status: 200
+  #   timeout: 5
+
+dns_probes: []
+  # - hostname: "google.com"
+  #   timeout: 3
+
+traceroute:
+  enabled: false
+  interval_cycles: 6  # run traceroute every N agent cycles
+
 exporters:
   influx:
     enabled: false

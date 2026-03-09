@@ -8,6 +8,7 @@ from app.utils.logger import logger
 from app.analytics.stability import StabilityAnalyzer
 from app.analytics.latency_stats import LatencyStats
 from app.analytics.scoring import compute_quality_score
+from app.collectors.traceroute import TracerouteCollector
 from app.core.health import AgentHealth, AgentState
 from collections import deque
 from threading import Lock
@@ -88,6 +89,8 @@ class Agent:
         interval: int = 10,
         alerts_config=None,
         targets: List[str] | None = None,
+        notifier=None,
+        traceroute_config=None,
     ):
         self.agent_id = agent_id
         self.collectors = collectors
@@ -113,6 +116,15 @@ class Agent:
         self.active_alerts = {}  # {alert_key: alert_dict}
         self._normal_streak = {}  # {alert_key: consecutive_normal_count}
         self._alert_counter = 0
+
+        # Notifications
+        self.notifier = notifier
+
+        # Traceroute
+        self._traceroute_config = traceroute_config
+        self._traceroute_cycle = 0
+        self.latest_traceroute = {}  # {target: traceroute_result}
+        self._traceroute_collector = TracerouteCollector()
 
         self._running = False
     
@@ -191,6 +203,16 @@ class Agent:
                     with self._target_lock:
                         self.current_target = target
                     await self._cycle()
+
+                # Periodic traceroute
+                self._traceroute_cycle += 1
+                if (
+                    self._traceroute_config
+                    and self._traceroute_config.enabled
+                    and self._traceroute_cycle % self._traceroute_config.interval_cycles == 0
+                ):
+                    await self._run_traceroute_all()
+
                 self.health.last_cycle = datetime.utcnow()
                 await asyncio.sleep(self.interval)
 
@@ -248,7 +270,15 @@ class Agent:
         self.metrics_history[target].append(metrics.copy())
 
         # Evaluate alert thresholds
-        self._evaluate_alerts(metrics)
+        notifications = self._evaluate_alerts(metrics)
+
+        # Dispatch notifications off the event loop
+        if notifications:
+            for fn, args in notifications:
+                try:
+                    await asyncio.to_thread(fn, *args)
+                except Exception:
+                    logger.debug("Webhook notification dispatch failed")
 
         # If not in hard error, mark healthy
         if self.health.state != AgentState.ERROR:
@@ -357,9 +387,13 @@ class Agent:
     # --------------------------------------------------
 
     def _evaluate_alerts(self, metrics: dict):
-        """Evaluate metrics against configured alert thresholds."""
+        """Evaluate metrics against configured alert thresholds.
+
+        Returns a list of (callable, args) tuples for notifications that
+        should be dispatched off the event loop by the caller.
+        """
         if not self.alerts_config or not self.alerts_config.enabled:
-            return
+            return []
 
         checks = [
             ("latency", metrics.get("latency"), self.alerts_config.latency_ms, "ms"),
@@ -369,6 +403,7 @@ class Agent:
 
         hysteresis = self.alerts_config.hysteresis_cycles
         now = datetime.utcnow().strftime('%H:%M:%S')
+        pending_notifications = []
 
         for metric_name, value, threshold, unit in checks:
             if value is None:
@@ -386,7 +421,7 @@ class Agent:
                 # Reset normal streak — metric is in alert state
                 self._normal_streak[alert_key] = 0
                 self._alert_counter += 1
-                self.active_alerts[alert_key] = {
+                alert = {
                     "id": f"alert-{alert_key}-{self._alert_counter}",
                     "severity": severity,
                     "metric": metric_name,
@@ -396,8 +431,34 @@ class Agent:
                     "timestamp": now,
                     "acknowledged": False,
                 }
+                self.active_alerts[alert_key] = alert
+                # Queue webhook notification for async dispatch
+                if self.notifier:
+                    pending_notifications.append((self.notifier.notify, (alert_key, alert)))
             else:
                 # Metric is normal — increment streak
                 self._normal_streak[alert_key] = self._normal_streak.get(alert_key, 0) + 1
                 if self._normal_streak.get(alert_key, 0) >= hysteresis:
-                    self.active_alerts.pop(alert_key, None)
+                    removed = self.active_alerts.pop(alert_key, None)
+                    if removed and self.notifier:
+                        pending_notifications.append((self.notifier.clear, (alert_key,)))
+
+        return pending_notifications
+
+    async def _run_traceroute_all(self):
+        """Run traceroute against all active targets."""
+        try:
+            loop = asyncio.get_running_loop()
+            for target in self.get_targets():
+                result = await loop.run_in_executor(None, self._traceroute_collector._run_traceroute, target)
+                self.latest_traceroute[target] = result
+                logger.info("Traceroute to %s completed (%d hops)", target, result.get("traceroute_hop_count", 0))
+        except Exception as exc:
+            logger.warning("Periodic traceroute failed: %s", exc)
+
+    async def run_traceroute(self, target: str) -> dict:
+        """On-demand traceroute for a single target."""
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(None, self._traceroute_collector._run_traceroute, target)
+        self.latest_traceroute[target] = result
+        return result
