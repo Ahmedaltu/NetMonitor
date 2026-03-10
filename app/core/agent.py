@@ -358,6 +358,32 @@ class Agent:
             latency, metrics.get("packet_loss"), metrics.get("jitter")
         )
 
+        # Throughput (placeholder, to be replaced with actual collector value)
+        if "throughput" not in metrics:
+            metrics["throughput"] = None  # Replace with actual collector value if available
+
+        # Error Rate: failed probes / total probes
+        total_probes = metrics.get("total_probes", 1)
+        failed_probes = metrics.get("failed_probes", 0)
+        metrics["error_rate"] = failed_probes / total_probes if total_probes else 0
+
+        # Availability: successful probes / total probes
+        successful_probes = metrics.get("successful_probes", 0)
+        metrics["availability"] = successful_probes / total_probes if total_probes else 1
+
+        # Anomaly Score: expose AI analysis if available
+        metrics["anomaly_score"] = metrics.get("anomaly_score", None)
+
+        # Explicit Uptime: percentage of successful cycles (simple implementation)
+        if not hasattr(self, "_uptime_success_count"):
+            self._uptime_success_count = 0
+        if not hasattr(self, "_uptime_total_count"):
+            self._uptime_total_count = 0
+        self._uptime_total_count += 1
+        if metrics.get("availability", 1) > 0.99:
+            self._uptime_success_count += 1
+        metrics["uptime"] = (self._uptime_success_count / self._uptime_total_count) * 100 if self._uptime_total_count else 100
+
 
     # --------------------------------------------------
     # Metadata

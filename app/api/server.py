@@ -113,6 +113,11 @@ def create_app(agent, settings):
             "latency_p95": metrics.get("latency_p95"),
             "latency_p99": metrics.get("latency_p99"),
             "quality_score": metrics.get("quality_score"),
+            "throughput": metrics.get("throughput"),
+            "error_rate": metrics.get("error_rate"),
+            "availability": metrics.get("availability"),
+            "anomaly_score": metrics.get("anomaly_score"),
+            "uptime": metrics.get("uptime"),
             "timestamp": metrics.get("timestamp"),
             "agent_id": metrics.get("agent_id"),
         }

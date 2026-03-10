@@ -291,7 +291,7 @@ export default function App() {
                 value: data.latency?.toFixed(1) ?? '--', 
                 unit: 'ms', 
                 trend: getTrend(data.latency, prevData?.latency),
-                change: prevData?.latency ? `${((data.latency - prevData.latency) / prevData.latency * 100).toFixed(1)}%` : '0%',
+                change: prevData?.latency ? `${((data.latency - prevData.latency) / (prevData.latency || 1) * 100).toFixed(1)}%` : '0%',
                 sparkline: generateSparklineFromHistory(newHistory, 'latency')
               },
               { 
@@ -338,6 +338,51 @@ export default function App() {
                 trend: getTrend(data.rolling_std_latency, prevData?.rolling_std),
                 change: '0%',
                 sparkline: generateSparklineFromHistory(newHistory, 'rolling_std')
+              },
+              { 
+                type: 'bandwidth', 
+                label: 'Throughput', 
+                value: data.throughput !== null && data.throughput !== undefined ? data.throughput : '--', 
+                unit: 'Mbps', 
+                trend: 'stable',
+                change: '0%',
+                sparkline: generateSparklineFromHistory(newHistory, 'throughput')
+              },
+              { 
+                type: 'packetLoss', 
+                label: 'Error Rate', 
+                value: data.error_rate !== null && data.error_rate !== undefined ? (data.error_rate * 100).toFixed(2) : '--', 
+                unit: '%', 
+                trend: 'stable',
+                change: '0%',
+                sparkline: generateSparklineFromHistory(newHistory, 'error_rate')
+              },
+              { 
+                type: 'latency', 
+                label: 'Availability', 
+                value: data.availability !== null && data.availability !== undefined ? (data.availability * 100).toFixed(2) : '--', 
+                unit: '%', 
+                trend: 'stable',
+                change: '0%',
+                sparkline: generateSparklineFromHistory(newHistory, 'availability')
+              },
+              { 
+                type: 'latency', 
+                label: 'Uptime', 
+                value: data.uptime !== null && data.uptime !== undefined ? data.uptime.toFixed(2) : '--', 
+                unit: '%', 
+                trend: 'stable',
+                change: '0%',
+                sparkline: generateSparklineFromHistory(newHistory, 'uptime')
+              },
+              { 
+                type: 'jitter', 
+                label: 'Anomaly Score', 
+                value: data.anomaly_score !== null && data.anomaly_score !== undefined ? data.anomaly_score.toFixed(2) : '--', 
+                unit: '', 
+                trend: 'stable',
+                change: '0%',
+                sparkline: generateSparklineFromHistory(newHistory, 'anomaly_score')
               },
               { 
                 type: data.quality_score >= 80 ? 'latency' : data.quality_score >= 50 ? 'jitter' : 'packetLoss', 
