@@ -605,3 +605,11 @@
 2026-03-09 21:12:54,700 [ERROR] NetMonitor: Failed to initialize InfluxExporter: INFLUX_TOKEN environment variable not set
 2026-03-09 21:12:54,752 [WARNING] NetMonitor: Traceroute timed out for 8.8.8.8
 2026-03-09 21:12:54,759 [ERROR] NetMonitor: traceroute/tracert command not found
+2026-03-17 11:55:33,871 [INFO] NetMonitor: PrometheusExporter initialized
+2026-03-17 11:55:33,872 [INFO] NetMonitor: PrometheusExporter enabled
+2026-03-17 11:55:33,920 [INFO] NetMonitor: Starting FastAPI server...
+2026-03-17 11:55:33,977 [INFO] NetMonitor: Starting Agent background task...
+2026-03-17 11:55:33,978 [INFO] NetMonitor:  Agent agent-001 starting...
+2026-03-17 12:02:46,777 [ERROR] NetMonitor: Influx query failed: HTTPConnection(host='localhost', port=8086): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it
+2026-03-17 12:03:01,927 [ERROR] NetMonitor: Influx query failed: HTTPConnection(host='localhost', port=8086): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it
+2026-03-17 22:12:56,227 [ERROR] NetMonitor: Influx query failed: HTTPConnection(host='localhost', port=8086): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it
