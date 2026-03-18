@@ -24,7 +24,11 @@ def fetch_recent_summary(settings, window_minutes: int = 30) -> dict:
 
     token = os.getenv("INFLUX_TOKEN")
     if not token:
-        raise ValueError("INFLUX_TOKEN not set")
+        logger.error("INFLUX_TOKEN not set. Falling back to settings.exporters.influx.token if available.")
+        token = getattr(settings.exporters.influx, 'token', None)
+    if not token:
+        logger.error("No InfluxDB token found in environment or settings. Metrics query will fail.")
+        return {"error": "No InfluxDB token configured."}
 
     client = InfluxDBClient(
         url=settings.exporters.influx.url,
@@ -44,7 +48,7 @@ def fetch_recent_summary(settings, window_minutes: int = 30) -> dict:
         tables = query_api.query(flux_query)
     except Exception as e:
         logger.error(f"Influx query failed: {e}")
-        return {}
+        return {"error": f"Influx query failed: {e}"}
 
     metrics = {}
 
@@ -69,6 +73,8 @@ def fetch_recent_summary(settings, window_minutes: int = 30) -> dict:
             "samples": len(values),
         }
 
+    if not summary:
+        logger.warning("No metrics found in InfluxDB for the requested window (last %d minutes). Check collectors and exporters.", window_minutes)
     return summary
 
 
@@ -83,23 +89,25 @@ def generate_explanation(summary: dict, settings=None) -> str:
     """
 
     if not summary:
-        return "No recent data available for analysis."
+        return "No recent data available for analysis.\n\nHint: Check that collectors are running and exporting data. Review backend logs for collector/exporter errors."
 
     # Read config from settings, fall back to defaults
     ollama_url = DEFAULT_OLLAMA_URL
     model_name = DEFAULT_MODEL
     timeout = DEFAULT_TIMEOUT
     if settings and hasattr(settings, 'ai'):
-        ollama_url = settings.ai.url
-        model_name = settings.ai.model
-        timeout = settings.ai.timeout
+        ollama_url = getattr(settings.ai, 'url', DEFAULT_OLLAMA_URL)
+        model_name = getattr(settings.ai, 'model', DEFAULT_MODEL)
+        timeout = getattr(settings.ai, 'timeout', DEFAULT_TIMEOUT)
 
+    # Limit summary to key metrics for prompt readability
+    key_metrics = {k: v for k, v in summary.items() if k in ["latency", "packet_loss", "jitter", "quality_score", "throughput", "error_rate", "availability", "anomaly_score", "uptime"]}
     prompt = f"""
 You are a network performance analyst.
 
 Below is a structured summary of recent network metrics:
 
-{summary}
+{key_metrics}
 
 Provide:
 1. Overall network health assessment.
@@ -110,26 +118,32 @@ Provide:
 Be concise, technical, and objective.
 """
 
-    try:
-        response = requests.post(
-            ollama_url,
-            json={
-                "model": model_name,
-                "prompt": prompt,
-                "stream": False
-            },
-            timeout=timeout
-        )
+    import asyncio
+    async def _call_llm():
+        try:
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(None, lambda: requests.post(
+                ollama_url,
+                json={
+                    "model": model_name,
+                    "prompt": prompt,
+                    "stream": False
+                },
+                timeout=timeout
+            ))
+            response.raise_for_status()
+            data = response.json()
+            # Validate response structure
+            if "response" not in data or not isinstance(data["response"], str):
+                logger.error(f"Malformed LLM response: {data}")
+                return "LLM analysis failed: malformed response."
+            return data["response"]
+        except requests.exceptions.RequestException as e:
+            logger.error(f"LLM request failed: {e}")
+            return f"LLM analysis failed due to connection error: {e}"
+        except Exception as e:
+            logger.error(f"Unexpected LLM error: {e}")
+            return f"LLM analysis failed due to internal error: {e}"
 
-        response.raise_for_status()
-
-        data = response.json()
-        return data.get("response", "No response from model.")
-
-    except requests.exceptions.RequestException as e:
-        logger.error(f"LLM request failed: {e}")
-        return "LLM analysis failed due to connection error."
-
-    except Exception as e:
-        logger.error(f"Unexpected LLM error: {e}")
-        return "LLM analysis failed due to internal error."
+    # Run async LLM call
+    return asyncio.run(_call_llm())
