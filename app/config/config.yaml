@@ -14,7 +14,7 @@ ping:
 
 ai:
   url: "http://localhost:11434/api/generate"
-  model: "phi3"
+  model: "llama3.2:1b"
   timeout: 60
 
 alerts:

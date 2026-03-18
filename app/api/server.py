@@ -51,7 +51,11 @@ def create_app(agent, settings):
         # Shutdown
         logger.info("Shutting down Agent...")
         agent.stop()
-        await agent_task
+        agent_task.cancel()
+        try:
+            await agent_task
+        except asyncio.CancelledError:
+            pass
 
     app = FastAPI(lifespan=lifespan)
 
@@ -80,8 +84,10 @@ def create_app(agent, settings):
 
     @app.get("/explain")
     async def explain(window: int = 30):
-        summary = fetch_recent_summary(settings, window_minutes=window)
-        explanation = generate_explanation(summary, settings=settings)
+        summary = await asyncio.to_thread(fetch_recent_summary, settings, window_minutes=window)
+        if "error" in summary:
+            raise HTTPException(status_code=503, detail=summary["error"])
+        explanation = await asyncio.to_thread(generate_explanation, summary, settings=settings)
         return {
             "window_minutes": window,
             "summary": summary,
@@ -206,6 +212,11 @@ def create_app(agent, settings):
     async def remove_target(target: str, request: Request):
         """Remove a target from the monitoring list."""
         _check_api_key(request)
+        if not _validate_target(target):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid target. Must be a valid hostname or IP address."
+            )
         agent.remove_target(target)
         return {"targets": agent.get_targets()}
 
@@ -223,7 +234,7 @@ def create_app(agent, settings):
 
     # ── Traceroute endpoints ──────────────────────────────────
     @app.post("/api/traceroute")
-    async def traceroute(target: str | None = None, request: Request = None):
+    async def traceroute(request: Request, target: str | None = None):
         """Run on-demand traceroute to a target."""
         _check_api_key(request)
         t = target or agent.get_target()

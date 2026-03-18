@@ -1,7 +1,7 @@
 # app/notifications/webhook.py
 
 import requests
-from datetime import datetime
+from datetime import datetime, timezone
 from app.utils.logger import logger
 
 
@@ -24,7 +24,7 @@ class WebhookNotifier:
         payload = {
             "text": self._format_message(alert),
             "alert": alert,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
         try:
@@ -46,12 +46,12 @@ class WebhookNotifier:
             payload = {
                 "text": f"\u2705 *RESOLVED* — {alert_key} returned to normal",
                 "alert": {"metric": alert_key, "severity": "resolved"},
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
             try:
                 requests.post(self.url, json=payload, timeout=self.timeout)
-            except requests.RequestException:
-                pass
+            except requests.RequestException as e:
+                logger.error("Recovery webhook failed for %s: %s", alert_key, e)
             del self._sent_alerts[alert_key]
 
     @staticmethod

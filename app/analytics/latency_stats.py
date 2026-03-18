@@ -13,11 +13,7 @@ class LatencyStats:
         if latency is not None:
             self.history.append(latency)
 
-    def percentile(self, p: float) -> float:
-        """Return the p-th percentile (0-100) of the current window."""
-        if not self.history:
-            return 0.0
-        sorted_vals = sorted(self.history)
+    def _interpolate(self, sorted_vals: list, p: float) -> float:
         k = (p / 100) * (len(sorted_vals) - 1)
         f = int(k)
         c = f + 1 if f + 1 < len(sorted_vals) else f
@@ -25,9 +21,12 @@ class LatencyStats:
         return sorted_vals[f] + d * (sorted_vals[c] - sorted_vals[f])
 
     def get_percentiles(self) -> dict:
-        """Return p50, p95, p99 percentiles."""
+        """Return p50, p95, p99 percentiles (sorts once)."""
+        if not self.history:
+            return {"p50": 0.0, "p95": 0.0, "p99": 0.0}
+        sorted_vals = sorted(self.history)
         return {
-            "p50": round(self.percentile(50), 2),
-            "p95": round(self.percentile(95), 2),
-            "p99": round(self.percentile(99), 2),
+            "p50": round(self._interpolate(sorted_vals, 50), 2),
+            "p95": round(self._interpolate(sorted_vals, 95), 2),
+            "p99": round(self._interpolate(sorted_vals, 99), 2),
         }

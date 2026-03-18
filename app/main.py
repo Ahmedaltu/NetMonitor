@@ -46,8 +46,8 @@ def main():
 
     uvicorn.run(
         app,
-        host="0.0.0.0",
-        port=settings.exporters.prometheus.port
+        host=settings.api_host,
+        port=settings.api_port,
     )
 
 

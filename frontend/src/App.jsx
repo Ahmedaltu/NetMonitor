@@ -728,8 +728,21 @@ export default function App() {
             <div className="space-y-2">
               {aiAnalysis.summary && (
                 <div className="bg-gray-50 dark:bg-gray-700 rounded p-2">
-                  <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Summary:</span>
-                  <p className="text-xs text-gray-700 dark:text-gray-300 mt-1">{JSON.stringify(aiAnalysis.summary)}</p>
+                  <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Metrics snapshot:</span>
+                  <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5">
+                    {['latency','jitter','packet_loss','quality_score','availability','uptime'].map(k =>
+                      aiAnalysis.summary[k] != null && (
+                        <div key={k} className="flex justify-between text-xs">
+                          <span className="text-gray-500 dark:text-gray-400">{k.replace(/_/g, ' ')}</span>
+                          <span className="text-gray-700 dark:text-gray-300 font-medium">
+                            {typeof aiAnalysis.summary[k].mean === 'number'
+                              ? aiAnalysis.summary[k].mean.toFixed(2)
+                              : aiAnalysis.summary[k].mean ?? '—'}
+                          </span>
+                        </div>
+                      )
+                    )}
+                  </div>
                 </div>
               )}
               <div className="bg-purple-50 dark:bg-purple-900/20 rounded p-2">

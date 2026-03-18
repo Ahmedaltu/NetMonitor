@@ -1,7 +1,7 @@
 # app/exporters/influx.py
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from influxdb_client import InfluxDBClient, Point
 from influxdb_client.client.write_api import SYNCHRONOUS, WriteOptions
 from app.exporters.base import BaseExporter
@@ -41,18 +41,23 @@ class InfluxExporter(BaseExporter):
     def export(self, metrics: dict):
         point = Point("network_metrics")
 
-        # Add fields
         for k, v in metrics.items():
-            if k == "agent_id":
-                point = point.tag("agent_id", v)
+            if k in ("agent_id", "target") and isinstance(v, str):
+                point = point.tag(k, v)
             elif isinstance(v, (int, float)):
                 point = point.field(k, float(v))
 
-
-        point = point.time(datetime.utcnow())
+        point = point.time(datetime.now(timezone.utc))
 
         self.write_api.write(
             bucket=self.bucket,
             org=self.org,
             record=point
         )
+
+    def close(self):
+        """Flush pending writes and close the InfluxDB client."""
+        try:
+            self.write_api.close()
+        finally:
+            self.client.close()

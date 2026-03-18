@@ -69,7 +69,7 @@ class TestLatencyStats:
         ls = LatencyStats()
         ls.update(10.0)
         ls.update(20.0)
-        assert ls.percentile(50) == 15.0  # midpoint
+        assert ls.get_percentiles()["p50"] == 15.0  # midpoint
 
     def test_multiple_values(self):
         ls = LatencyStats()
@@ -99,8 +99,9 @@ class TestLatencyStats:
         ls = LatencyStats()
         for v in [10, 20, 30, 40, 50]:
             ls.update(float(v))
-        assert ls.percentile(0) == 10.0
-        assert ls.percentile(100) == 50.0
+        p = ls.get_percentiles()
+        assert p["p50"] == 30.0
+        assert p["p99"] >= 49.0  # linear interpolation near max
 
 
 # ── Quality Score ──────────────────────────────────────────────

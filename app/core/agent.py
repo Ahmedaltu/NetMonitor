@@ -1,7 +1,7 @@
 # app/core/agent.py
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
 
 from app.utils.logger import logger
@@ -29,7 +29,7 @@ class NetworkEvents:
             self.timeouts += 1
             self.recent.appendleft({
                 'type': 'timeout',
-                'time': datetime.utcnow().strftime('%H:%M:%S'),
+                'time': datetime.now(timezone.utc).strftime('%H:%M:%S'),
                 'message': f'Timeout to {target}'
             })
     
@@ -38,7 +38,7 @@ class NetworkEvents:
             self.packet_loss_count += 1
             self.recent.appendleft({
                 'type': 'packet_loss',
-                'time': datetime.utcnow().strftime('%H:%M:%S'),
+                'time': datetime.now(timezone.utc).strftime('%H:%M:%S'),
                 'message': f'{loss_pct:.1f}% packet loss to {target}'
             })
     
@@ -47,7 +47,7 @@ class NetworkEvents:
             self.high_jitter_count += 1
             self.recent.appendleft({
                 'type': 'high_jitter',
-                'time': datetime.utcnow().strftime('%H:%M:%S'),
+                'time': datetime.now(timezone.utc).strftime('%H:%M:%S'),
                 'message': f'High jitter ({jitter:.1f}ms) to {target}'
             })
     
@@ -119,6 +119,10 @@ class Agent:
 
         # Notifications
         self.notifier = notifier
+
+        # Uptime tracking
+        self._uptime_success_count = 0
+        self._uptime_total_count = 0
 
         # Traceroute
         self._traceroute_config = traceroute_config
@@ -213,7 +217,7 @@ class Agent:
                 ):
                     await self._run_traceroute_all()
 
-                self.health.last_cycle = datetime.utcnow()
+                self.health.last_cycle = datetime.now(timezone.utc)
                 await asyncio.sleep(self.interval)
 
         except asyncio.CancelledError:
@@ -228,6 +232,12 @@ class Agent:
     async def shutdown(self):
         logger.info(f" Agent {self.agent_id} shutting down...")
         self._running = False
+        for exporter in self.exporters:
+            if hasattr(exporter, "close"):
+                try:
+                    exporter.close()
+                except Exception as exc:
+                    logger.warning("Exporter close failed: %s", exc)
         self.health.mark_stopped()
 
     def stop(self):
@@ -259,12 +269,11 @@ class Agent:
         # Store latest metrics for API access
         self.latest_metrics = metrics.copy()
 
-        # Store per-target latest metrics
+        # Store per-target latest metrics and history
         target = metrics.get("target", self.get_target())
         self.all_targets_metrics[target] = metrics.copy()
 
         # Append to per-target history buffer
-        target = metrics.get("target", self.get_target())
         if target not in self.metrics_history:
             self.metrics_history[target] = deque(maxlen=200)
         self.metrics_history[target].append(metrics.copy())
@@ -277,8 +286,8 @@ class Agent:
             for fn, args in notifications:
                 try:
                     await asyncio.to_thread(fn, *args)
-                except Exception:
-                    logger.debug("Webhook notification dispatch failed")
+                except Exception as exc:
+                    logger.warning("Webhook notification dispatch failed: %s", exc)
 
         # If not in hard error, mark healthy
         if self.health.state != AgentState.ERROR:
@@ -362,25 +371,22 @@ class Agent:
         if "throughput" not in metrics:
             metrics["throughput"] = None  # Replace with actual collector value if available
 
-        # Error Rate: failed probes / total probes
-        total_probes = metrics.get("total_probes", 1)
-        failed_probes = metrics.get("failed_probes", 0)
-        metrics["error_rate"] = failed_probes / total_probes if total_probes else 0
+        # Availability: 1.0 if no timeout/packet-loss, else degrade proportionally
+        if metrics.get("timeout"):
+            cycle_availability = 0.0
+        else:
+            cycle_availability = 1.0 - (metrics.get("packet_loss") or 0.0)
+        metrics["availability"] = round(cycle_availability, 4)
 
-        # Availability: successful probes / total probes
-        successful_probes = metrics.get("successful_probes", 0)
-        metrics["availability"] = successful_probes / total_probes if total_probes else 1
+        # Error Rate: inverse of availability for this cycle
+        metrics["error_rate"] = round(1.0 - cycle_availability, 4)
 
         # Anomaly Score: expose AI analysis if available
         metrics["anomaly_score"] = metrics.get("anomaly_score", None)
 
-        # Explicit Uptime: percentage of successful cycles (simple implementation)
-        if not hasattr(self, "_uptime_success_count"):
-            self._uptime_success_count = 0
-        if not hasattr(self, "_uptime_total_count"):
-            self._uptime_total_count = 0
+        # Uptime: percentage of successful cycles
         self._uptime_total_count += 1
-        if metrics.get("availability", 1) > 0.99:
+        if cycle_availability > 0.99:
             self._uptime_success_count += 1
         metrics["uptime"] = (self._uptime_success_count / self._uptime_total_count) * 100 if self._uptime_total_count else 100
 
@@ -391,7 +397,7 @@ class Agent:
 
     def _apply_metadata(self, metrics: dict):
         metrics["agent_id"] = self.agent_id
-        metrics["timestamp"] = datetime.utcnow().isoformat()
+        metrics["timestamp"] = datetime.now(timezone.utc).isoformat()
 
     # --------------------------------------------------
     # Export
@@ -428,7 +434,7 @@ class Agent:
         ]
 
         hysteresis = self.alerts_config.hysteresis_cycles
-        now = datetime.utcnow().strftime('%H:%M:%S')
+        now = datetime.now(timezone.utc).strftime('%H:%M:%S')
         pending_notifications = []
 
         for metric_name, value, threshold, unit in checks:
@@ -474,9 +480,8 @@ class Agent:
     async def _run_traceroute_all(self):
         """Run traceroute against all active targets."""
         try:
-            loop = asyncio.get_running_loop()
             for target in self.get_targets():
-                result = await loop.run_in_executor(None, self._traceroute_collector._run_traceroute, target)
+                result = await asyncio.to_thread(self._traceroute_collector.collect, target)
                 self.latest_traceroute[target] = result
                 logger.info("Traceroute to %s completed (%d hops)", target, result.get("traceroute_hop_count", 0))
         except Exception as exc:
@@ -484,7 +489,6 @@ class Agent:
 
     async def run_traceroute(self, target: str) -> dict:
         """On-demand traceroute for a single target."""
-        loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(None, self._traceroute_collector._run_traceroute, target)
+        result = await asyncio.to_thread(self._traceroute_collector.collect, target)
         self.latest_traceroute[target] = result
         return result

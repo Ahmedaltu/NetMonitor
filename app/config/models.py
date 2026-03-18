@@ -1,6 +1,6 @@
 # app/config/models.py
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import Optional
 
 
@@ -25,6 +25,14 @@ class AIConfig(BaseModel):
 class AlertThreshold(BaseModel):
     warning: float
     critical: float
+
+    @model_validator(mode="after")
+    def check_thresholds(self) -> "AlertThreshold":
+        if self.warning >= self.critical:
+            raise ValueError(
+                f"warning threshold ({self.warning}) must be less than critical ({self.critical})"
+            )
+        return self
 
 
 class AlertsConfig(BaseModel):
@@ -62,7 +70,7 @@ class NotificationsConfig(BaseModel):
 
 
 class ExporterInfluxConfig(BaseModel):
-    enabled: bool = True
+    enabled: bool = False  # disabled by default — requires INFLUX_TOKEN
     url: str = "http://localhost:8086"
     org: str = "net-monitor"
     bucket: str = "network"
@@ -81,6 +89,8 @@ class ExportersConfig(BaseModel):
 class Settings(BaseModel):
     agent: AgentConfig
     interval: int = 10
+    api_host: str = "0.0.0.0"
+    api_port: int = 8000
     ping: PingConfig = PingConfig()
     ai: AIConfig = AIConfig()
     alerts: AlertsConfig = AlertsConfig()
