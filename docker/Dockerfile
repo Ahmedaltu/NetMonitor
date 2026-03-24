@@ -10,8 +10,12 @@ RUN apt-get update && apt-get install -y iputils-ping && rm -rf /var/lib/apt/lis
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
+
 # Copy source code
 COPY . .
+
+# Ensure logs directory exists and is writable
+RUN mkdir -p /app/logs && chmod 777 /app/logs
 
 # Set environment variables (override as needed)
 ENV PYTHONUNBUFFERED=1

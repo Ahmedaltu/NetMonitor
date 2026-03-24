@@ -2,132 +2,32 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
-			"label": "Run NetMonitor App",
+			"label": "apprunner",
 			"type": "shell",
-			"command": "python -m app.main",
+			"command": "docker compose -f docker/docker-compose.yml up -d",
 			"isBackground": false,
 			"problemMatcher": [],
-			"group": "build"
+			"group": "build",
+			"detail": "Run all NetMonitor services (backend, InfluxDB, Prometheus, Grafana, Ollama) via Docker Compose."
 		},
 		{
-			"label": "Run NetMonitor App",
+			"label": "appstopper",
 			"type": "shell",
-			"command": "python -m app.main",
+			"command": "docker compose -f docker/docker-compose.yml down",
 			"isBackground": false,
 			"problemMatcher": [],
-			"group": "build"
-		},
-		{
-			"label": "Run NetMonitor App",
-			"type": "shell",
-			"command": "python -m app.main",
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "build"
-		},
-		{
-			"label": "Run NetMonitor App",
-			"type": "shell",
-			"command": "python -m app.main",
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "build"
-		},
-		{
-			"label": "Run NetMonitor App",
-			"type": "shell",
-			"command": "python -m app.main",
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "build"
-		},
-		{
-			"label": "Run NetMonitor App",
-			"type": "shell",
-			"command": "python -m app.main",
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "build"
-		},
-		{
-			"label": "Run NetMonitor App",
-			"type": "shell",
-			"command": "python -m app.main",
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "build"
-		},
-		{
-			"label": "Run NetMonitor App",
-			"type": "shell",
-			"command": "python -m app.main",
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "build"
-		},
-		{
-			"label": "Run NetMonitor App",
-			"type": "shell",
-			"command": "python -m app.main",
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "build"
-		},
-		{
-			"label": "Run NetMonitor App",
-			"type": "shell",
-			"command": "python -m app.main",
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "build"
-		},
-		{
-			"label": "Run NetMonitor App",
-			"type": "shell",
-			"command": "python -m app.main",
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "build"
-		},
-		{
-			"label": "Run NetMonitor App on port 8001",
-			"type": "shell",
-			"command": "python -m app.main",
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "build"
-		},
-		{
-			"label": "Run NetMonitor App",
-			"type": "shell",
-			"command": "python -m app.main",
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "build"
-		},
-		{
-			"label": "Run NetMonitor App",
-			"type": "shell",
-			"command": "python -m app.main",
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "build"
-		},
-		{
-			"label": "Run NetMonitor App",
-			"type": "shell",
-			"command": "python -m app.main",
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "build"
-		},
-		{
-			"label": "Run NetMonitor App",
-			"type": "shell",
-			"command": "python -m app.main",
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "build"
+			"group": "build",
+			"detail": "Stop all NetMonitor services (backend, InfluxDB, Prometheus, Grafana, Ollama) via Docker Compose."
 		}
 	]
+			"label": "apprunner",
+			"type": "shell",
+			"command": "docker compose up -d",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build",
+			"detail": "Run all NetMonitor services (backend, InfluxDB, Prometheus, Grafana, Ollama) via Docker Compose."
+		}
+	]
+		
 }
