@@ -1,0 +1,11 @@
+---
+- name: Deploy NetMonitor Observability Stack
+  hosts: netmonitor
+  become: yes
+
+  roles:
+    - docker
+    - influxdb
+    - grafana
+    - backend
+    - frontend

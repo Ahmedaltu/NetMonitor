@@ -1,0 +1,35 @@
+---
+# Deploy InfluxDB in Docker with persistent volumes
+
+- name: Create InfluxDB Docker volumes
+  community.docker.docker_volume:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - "{{ influxdb_data_volume }}"
+    - "{{ influxdb_config_volume }}"
+
+- name: Run InfluxDB container
+  community.docker.docker_container:
+    name: "{{ influxdb_container_name }}"
+    image: "{{ influxdb_docker_image }}"
+    pull: yes
+    state: started
+    restart_policy: always
+    published_ports:
+      - "{{ influxdb_http_port }}:8086"
+    volumes:
+      - "{{ influxdb_data_volume }}:/var/lib/influxdb2"
+      - "{{ influxdb_config_volume }}:/etc/influxdb2"
+    env:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: adminadmin
+      DOCKER_INFLUXDB_INIT_ORG: netmonitor
+      DOCKER_INFLUXDB_INIT_BUCKET: netmonitor
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: "{{ influx_token }}"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5

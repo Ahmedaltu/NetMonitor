@@ -76,6 +76,9 @@ NetMonitor is a modular, async-first network monitoring agent and dashboard. It 
 - Dual export: push (InfluxDB) and pull (Prometheus)
 - React dashboard for real-time UX
 - Docker for reproducible deployment
+- **Production deployment automated with Ansible** (see `ansible/`)
+- **Backend and frontend run as Docker containers** for consistency and scalability
+- **Healthchecks and idempotent tasks** for robust, self-healing infrastructure
 
 ## Known Issues & Solutions
 | Issue | Solution |
@@ -86,17 +89,18 @@ NetMonitor is a modular, async-first network monitoring agent and dashboard. It 
 | Metrics missing | Check collectors and exporters logs |
 | CORS errors in frontend | Ensure API and dashboard run on allowed origins |
 
-## Coding Conventions
+## Coding & Deployment Conventions
 - Use async/await for all I/O and network code
 - Type all config and API models with Pydantic
 - One collector/exporter per file, inherit from base class
 - Use logging for all errors and warnings
-- Never hardcode secrets or tokens
+- **Never commit secrets or tokens in plain text** (use Ansible Vault for `influx_token` and other secrets)
 - Always validate user input (API, config)
 - Write docstrings for all public functions/classes
 - Use TailwindCSS for frontend styling
 - Keep API response formats consistent
 - One focused fix per commit
+- **All production deployments use Docker containers and Ansible automation**
 
 ## Recent Changes
 - [2026-03-24] Initial Claude agent system setup and project memory
@@ -121,3 +125,11 @@ NetMonitor is a modular, async-first network monitoring agent and dashboard. It 
 - [ ] Harden API security and rate limiting
 - [ ] Add deployment scripts for cloud providers
 - [ ] Review and refactor code for maintainability
+
+## Deployment & Automation
+- See `ansible/` for production deployment playbook and roles
+- All core services (backend, frontend, InfluxDB, Grafana) are deployed as Docker containers
+- Persistent Docker volumes are used for data safety
+- Healthchecks and restart policies are enforced for all containers
+- All secrets (e.g., `influx_token`) **must** be managed with Ansible Vault and never committed
+- Playbook is idempotent and safe to re-run

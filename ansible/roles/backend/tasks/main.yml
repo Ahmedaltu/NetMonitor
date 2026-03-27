@@ -1,0 +1,37 @@
+---
+# Deploy NetMonitor backend as a Docker container
+
+- name: Build backend Docker image
+  community.docker.docker_image:
+    name: netmonitor-backend
+    build:
+      path: "{{ playbook_dir }}/roles/backend"
+    source: build
+    force_source: yes
+    state: present
+
+- name: Ensure backend .env file exists (vault recommended)
+  copy:
+    dest: /opt/netmonitor/backend.env
+    content: |
+      INFLUX_TOKEN={{ influx_token }}
+      # Add other environment variables as needed
+    owner: root
+    group: root
+    mode: '0600'
+
+- name: Run backend container
+  community.docker.docker_container:
+    name: netmonitor-backend
+    image: netmonitor-backend
+    restart_policy: always
+    state: started
+    env_file:
+      - /opt/netmonitor/backend.env
+    published_ports:
+      - "{{ backend_port }}:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5

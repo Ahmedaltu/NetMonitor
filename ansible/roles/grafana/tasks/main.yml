@@ -1,0 +1,28 @@
+---
+# Deploy Grafana in Docker with persistent volumes
+
+- name: Create Grafana Docker volumes
+  community.docker.docker_volume:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - "{{ grafana_data_volume }}"
+    - "{{ grafana_config_volume }}"
+
+- name: Run Grafana container
+  community.docker.docker_container:
+    name: "{{ grafana_container_name }}"
+    image: "{{ grafana_docker_image }}"
+    pull: yes
+    state: started
+    restart_policy: always
+    published_ports:
+      - "{{ grafana_http_port }}:3000"
+    volumes:
+      - "{{ grafana_data_volume }}:/var/lib/grafana"
+      - "{{ grafana_config_volume }}:/etc/grafana"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/login"]
+      interval: 30s
+      timeout: 10s
+      retries: 5

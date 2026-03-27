@@ -1,0 +1,36 @@
+# Global variables for all hosts
+
+docker_users:
+  - "{{ ansible_user }}"
+
+
+
+
+# NetMonitor Ansible Variables
+# Edit these for your environment. Use ansible-vault for secrets!
+
+# InfluxDB
+influxdb_container_name: influxdb
+influxdb_docker_image: influxdb:2.7
+influxdb_data_volume: influxdb_data
+influxdb_config_volume: influxdb_config
+influxdb_http_port: 8086
+
+# Grafana
+grafana_container_name: grafana
+grafana_docker_image: grafana/grafana-oss:10.4.2
+grafana_data_volume: grafana_data
+grafana_config_volume: grafana_config
+grafana_http_port: 3000
+
+# Backend (Dockerized)
+backend_deploy_dir: /opt/netmonitor/backend
+backend_venv_dir: "{{ backend_deploy_dir }}/venv"
+backend_service_name: netmonitor-backend
+backend_port: 8000
+# Use ansible-vault for this secret!
+influx_token: "REPLACE_WITH_YOUR_TOKEN"
+
+# Frontend (Dockerized)
+# No variables needed unless customizing port or image
+frontend_deploy_dir: /opt/netmonitor/frontend

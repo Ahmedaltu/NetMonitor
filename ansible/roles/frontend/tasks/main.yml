@@ -1,0 +1,25 @@
+---
+# Deploy NetMonitor frontend as a Docker container
+
+- name: Build frontend Docker image
+  community.docker.docker_image:
+    name: netmonitor-frontend
+    build:
+      path: "{{ playbook_dir }}/roles/frontend"
+    source: build
+    force_source: yes
+    state: present
+
+- name: Run frontend container
+  community.docker.docker_container:
+    name: netmonitor-frontend
+    image: netmonitor-frontend
+    restart_policy: always
+    state: started
+    published_ports:
+      - "80:80"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
