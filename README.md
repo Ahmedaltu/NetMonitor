@@ -8,6 +8,8 @@ NetMonitor is a modular, production-oriented network monitoring agent designed t
 
 <img width="1256" height="1114" alt="NetMonitor Dashboard" src="https://github.com/user-attachments/assets/88745cc4-d9be-4f8a-8379-90a7fd25cadc" />
 
+<img width="1873" height="653" alt="image" src="https://github.com/user-attachments/assets/96abc1bb-2022-4310-842d-3c3c2b06bc7c" />
+
 ---
 
 ## Features
