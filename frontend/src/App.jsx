@@ -228,12 +228,16 @@ export default function App() {
     const windowMinutes = timeWindow === '5m' ? 5 : timeWindow === '15m' ? 15 : timeWindow === '1h' ? 60 : 1440;
     fetchExplanation(windowMinutes)
       .then(data => {
-        setAiAnalysis({
+        setAiAnalysis(prev => ({
+          ...prev,
           summary: data.summary,
-          analysis: data.analysis,
+          analysis: data.analysis, // backward compatibility
+          analysisText: data.analysis_text ?? data.analysis ?? data.explanation ?? "",
+          analysisStructured: data.analysis_structured ?? null,
+          metricsSnapshot: data.metrics_snapshot ?? null,
           loading: false,
           error: null
-        });
+        }));
       })
       .catch(err => {
         setAiAnalysis(prev => ({

@@ -87,11 +87,26 @@ def create_app(agent, settings):
         summary = await asyncio.to_thread(fetch_recent_summary, settings, window_minutes=window)
         if "error" in summary:
             raise HTTPException(status_code=503, detail=summary["error"])
-        explanation = await asyncio.to_thread(generate_explanation, summary, settings=settings)
+        analysis_text, analysis_structured = await asyncio.to_thread(generate_explanation, summary, settings)
+        # Flattened metrics snapshot (mean values only)
+        def get_mean(metric):
+            return round(summary[metric]["mean"], 2) if metric in summary and "mean" in summary[metric] else None
+        metrics_snapshot = {
+            "latency": get_mean("latency"),
+            "packet_loss": get_mean("packet_loss"),
+            "availability": get_mean("availability"),
+            "jitter": get_mean("jitter"),
+            "quality_score": get_mean("quality_score"),
+            "uptime": get_mean("uptime"),
+        }
+        # Backward compatibility: if the old field 'analysis' or 'explanation' was present, keep it
         return {
-            "window_minutes": window,
-            "summary": summary,
-            "analysis": explanation
+            "metrics_snapshot": metrics_snapshot,
+            "analysis_text": analysis_text,
+            "analysis_structured": analysis_structured,
+            # For backward compatibility with old frontend
+            "analysis": analysis_text,
+            "explanation": analysis_text,
         }
 
     @app.get("/api/agent/status")
