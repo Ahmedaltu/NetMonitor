@@ -1,20 +1,39 @@
-# app/ai/analyzer.py
+"""
+app/ai/analyzer.py
 
+Public API (unchanged from original — drop-in replacement):
+  fetch_recent_summary(settings, window_minutes) → dict
+  generate_explanation(summary, settings)        → (str, dict | None)
+
+Internals: LangGraph graph (graph.py) + ChromaDB retrieval (vector_store.py)
+replace the original single-shot Ollama call and static file loader.
+"""
+
+from __future__ import annotations
 
 import os
-import json
-import requests
-from influxdb_client import InfluxDBClient
-from app.utils.logger import logger
+from typing import Optional
 
-# Default values (overridden by settings when available)
+from influxdb_client import InfluxDBClient
+
+from app.utils.logger import logger
+from app.ai.graph import (
+    diagnostic_graph,
+    _build_key_metrics,
+    _build_analysis_context,
+    DiagnosticState,
+)
+
+# ── Constants ─────────────────────────────────────────────────────────────────
+
 DEFAULT_OLLAMA_URL = "http://localhost:11434/api/generate"
-DEFAULT_MODEL = "phi3"
+DEFAULT_MODEL = "llama3.2:1b"
 DEFAULT_TIMEOUT = 60
 
-# Module-level InfluxDB client cache — avoids reconnect on every /explain call.
-# Keyed by (url, org) so a settings change creates a new client.
+# ── InfluxDB client cache (unchanged from original) ───────────────────────────
+
 _influx_clients: dict = {}
+
 
 def _get_influx_client(url: str, token: str, org: str) -> InfluxDBClient:
     key = (url, org)
@@ -25,9 +44,8 @@ def _get_influx_client(url: str, token: str, org: str) -> InfluxDBClient:
         logger.debug("Created new InfluxDB client for %s / %s", url, org)
     return client
 
-# -----------------------------------------------------
-# Influx Summary Builder
-# -----------------------------------------------------
+
+# ── fetch_recent_summary (unchanged from original) ───────────────────────────
 
 def fetch_recent_summary(settings, window_minutes: int = 30) -> dict:
     """
@@ -36,10 +54,9 @@ def fetch_recent_summary(settings, window_minutes: int = 30) -> dict:
     """
     token = os.getenv("INFLUX_TOKEN")
     if not token:
-        logger.error("INFLUX_TOKEN not set. Falling back to settings.exporters.influx.token if available.")
-        token = getattr(settings.exporters.influx, 'token', None)
+        token = getattr(settings.exporters.influx, "token", None)
     if not token:
-        logger.error("No InfluxDB token found in environment or settings. Metrics query will fail.")
+        logger.error("No InfluxDB token found in environment or settings.")
         return {"error": "No InfluxDB token configured."}
 
     client = _get_influx_client(
@@ -56,7 +73,7 @@ from(bucket: "{settings.exporters.influx.bucket}")
     try:
         tables = query_api.query(flux_query)
     except Exception as e:
-        logger.error(f"Influx query failed: {e}")
+        logger.error("Influx query failed: %s", e)
         return {"error": f"Influx query failed: {e}"}
 
     metrics: dict = {}
@@ -77,161 +94,86 @@ from(bucket: "{settings.exporters.influx.bucket}")
             "min": min(values),
             "samples": len(values),
         }
+
     if not summary:
         logger.warning(
-            "No metrics found in InfluxDB for the requested window (last %d minutes). "
+            "No metrics found in InfluxDB for the last %d minutes. "
             "Check collectors and exporters.",
             window_minutes,
         )
     return summary
 
-# -----------------------------------------------------
-# Threshold helpers and context
-# -----------------------------------------------------
 
-THRESHOLDS = {
-    "latency": {"warning": 50, "degraded": 100, "direction": "high"},
-    "jitter": {"warning": 20, "degraded": 30, "direction": "high"},
-    "packet_loss": {"warning": 1, "degraded": 3, "direction": "high"},
-    "quality_score": {"warning": 90, "degraded": 75, "direction": "low"},
-    "availability": {"warning": 0.99, "degraded": 0.95, "direction": "low"},
-    # uptime: no strict threshold
-}
-
-KEY_METRICS = ["latency", "jitter", "packet_loss", "quality_score", "availability", "uptime"]
-
-def build_key_metrics(summary):
-    return {k: round(summary[k]["mean"], 2) for k in KEY_METRICS if k in summary}
-
-def metric_status(metric, value):
-    t = THRESHOLDS.get(metric)
-    if not t or value is None:
-        return "ok"
-    if t["direction"] == "high":
-        if value > t["degraded"]:
-            return "degraded"
-        elif value > t["warning"]:
-            return "warning"
-        else:
-            return "ok"
-    else:  # direction == "low"
-        if value < t["degraded"]:
-            return "degraded"
-        elif value < t["warning"]:
-            return "warning"
-        else:
-            return "ok"
-
-def build_analysis_context(summary):
-    context = {}
-    for metric in KEY_METRICS:
-        value = summary.get(metric, {}).get("mean")
-        context[metric] = {
-            "value": value,
-            "status": metric_status(metric, value)
-        }
-    return context
-
-# -----------------------------------------------------
-# LLM Explanation (returns (analysis_text, analysis_structured))
-# -----------------------------------------------------
+# ── generate_explanation ──────────────────────────────────────────────────────
 
 def generate_explanation(summary: dict, settings=None):
     """
-    Send structured metric summary to local Ollama model.
-    Returns (analysis_text, analysis_structured) tuple.
+    Run the LangGraph diagnostic pipeline over the metric summary.
+
+    Returns (analysis_text: str, analysis_structured: dict | None)
+    — identical return signature to the original analyzer.
     """
     if not summary:
         return (
             "No recent data available for analysis.\n\n"
             "Hint: Check that collectors are running and exporting data. "
             "Review backend logs for collector/exporter errors.",
-            None
+            None,
         )
     if "error" in summary:
         return (f"Cannot analyze metrics: {summary['error']}", None)
 
+    # Resolve Ollama settings
     ollama_url = DEFAULT_OLLAMA_URL
     model_name = DEFAULT_MODEL
     timeout = DEFAULT_TIMEOUT
-    if settings and hasattr(settings, 'ai'):
-        raw_url = getattr(settings.ai, 'url', getattr(settings.ai, 'ollama_url', DEFAULT_OLLAMA_URL))
+
+    if settings and hasattr(settings, "ai"):
+        raw_url = getattr(settings.ai, "url", getattr(settings.ai, "ollama_url", DEFAULT_OLLAMA_URL))
         ollama_url = str(raw_url).strip()
-        raw_model = getattr(settings.ai, 'model', DEFAULT_MODEL)
+        raw_model = getattr(settings.ai, "model", DEFAULT_MODEL)
         model_name = str(raw_model).strip()
-        timeout = getattr(settings.ai, 'timeout', DEFAULT_TIMEOUT)
+        timeout = getattr(settings.ai, "timeout", DEFAULT_TIMEOUT)
 
-    if not ollama_url.rstrip('/').endswith('/api/generate'):
-        ollama_url = ollama_url.rstrip('/') + '/api/generate'
+    if not ollama_url.rstrip("/").endswith("/api/generate"):
+        ollama_url = ollama_url.rstrip("/") + "/api/generate"
 
-    key_metrics = build_key_metrics(summary)
-    context = build_analysis_context(summary)
-
-    # Strict JSON-only prompt
-    prompt = (
-        "You are a network monitoring expert. "
-        "Given the following metrics and their threshold-based status, "
-        "analyze the network health and return ONLY a JSON object with these fields: "
-        "health_status (one of: healthy, warning, degraded), "
-        "summary (short technical diagnosis), "
-        "likely_causes (array of strings), "
-        "evidence (array of strings), "
-        "recommended_checks (array of strings), "
-        "confidence (one of: low, medium, high). "
-        "Do not include generic advice like 'monitor over time'. "
-        "Be technical and concise. "
-        f"Metrics: {json.dumps(key_metrics)}. "
-        f"Status: {json.dumps(context)}. "
-        "Respond ONLY with the JSON object, no extra text."
-    )
+    # Build initial graph state
+    initial_state: DiagnosticState = {
+        # Inputs
+        "summary": summary,
+        "key_metrics": _build_key_metrics(summary),
+        "analysis_context": _build_analysis_context(summary),
+        "ollama_url": ollama_url,
+        "model_name": model_name,
+        "timeout": timeout,
+        # Intermediate (empty — populated by graph nodes)
+        "health_classification": "",
+        "symptom_query": "",
+        "retrieved_chunks": [],
+        "knowledge_context": "",
+        # Output (empty — populated by graph nodes)
+        "analysis_text": "",
+        "analysis_structured": None,
+    }
 
     try:
-        req_json = {
-            "model": model_name,
-            "prompt": prompt,
-            "stream": False,
-            "options": {"num_predict": 256},
-            "format": "json"
-        }
-        response = requests.post(
-            ollama_url,
-            json=req_json,
-            timeout=timeout,
+        logger.info(
+            "Running diagnostic graph: model=%s | metrics=%s",
+            model_name,
+            list(initial_state["key_metrics"].keys()),
         )
-        if response.status_code == 404:
-            try:
-                detail = response.json().get("error", "Not Found")
-                return (f"LLM error: {detail}. Please run 'ollama pull {model_name}' in your terminal.", None)
-            except Exception:
-                return (f"LLM error 404: Endpoint {ollama_url} not found. "
-                        f"Ensure model '{model_name}' is downloaded.", None)
+        final_state: DiagnosticState = diagnostic_graph.invoke(initial_state)
+        logger.info(
+            "Diagnostic graph complete: health=%s | chunks_used=%d",
+            final_state.get("health_classification"),
+            len(final_state.get("retrieved_chunks", [])),
+        )
+        return (
+            final_state["analysis_text"],
+            final_state["analysis_structured"],
+        )
 
-        response.raise_for_status()
-        data = response.json()
-        text = data["response"] if "response" in data else str(data)
-        try:
-            analysis_structured = json.loads(text)
-        except Exception:
-            analysis_structured = None
-        return (text, analysis_structured)
-    except requests.exceptions.ConnectionError:
-        ollama_base = ollama_url.rsplit("/api/", 1)[0]
-        logger.error("Ollama is not reachable at %s", ollama_base)
-        return (
-            f"LLM unavailable: Ollama is not running at {ollama_base}. "
-            f"Start Ollama and ensure the '{model_name}' model is pulled.",
-            None
-        )
-    except requests.exceptions.ReadTimeout:
-        logger.error("LLM timed out after %ss — model may still be loading", timeout)
-        return (
-            f"LLM timed out after {timeout}s. "
-            f"The model '{model_name}' may be loading or too slow. Try again shortly.",
-            None
-        )
-    except requests.exceptions.RequestException as e:
-        logger.error("LLM request failed: %s", e)
-        return (f"LLM analysis failed due to connection error: {e}", None)
     except Exception as e:
-        logger.error("Unexpected LLM error: %s", e)
+        logger.error("Diagnostic graph failed: %s", e, exc_info=True)
         return (f"LLM analysis failed due to internal error: {e}", None)
