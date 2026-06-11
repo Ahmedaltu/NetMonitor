@@ -14,17 +14,17 @@ NetMonitor is a modular, production-oriented network monitoring agent designed t
 
 - **Async monitoring engine** — concurrent collectors with `asyncio`
 - **Dual exporters** — InfluxDB (push) + Prometheus (pull)
-- **Local AI diagnostics** — optional LLM analysis via Ollama (no cloud required)
+- **RAG-based AI diagnostics** — LangGraph multi-step pipeline + ChromaDB vector store retrieves relevant runbooks and thresholds before querying the local LLM (Ollama), no cloud required
 - **Agent health tracking** — automatic state transitions (starting → running → degraded → error → stopped)
-- **Plugin-based collectors** — ping, traffic, iPerf (extensible)
+- **Plugin-based collectors** — ping, HTTP probe, DNS probe, traceroute, traffic, iPerf (extensible)
 - **Analytics engine** — rolling mean/std, network scoring, stability analysis
 - **Schema-safe metrics** — all numerics normalized to float before InfluxDB write
 - **Typed configuration** — Pydantic models + YAML config with environment overrides
-- **FastAPI server** — REST API for metrics, events, health, target management
-- **React dashboard** — real-time charts, AI insights, alerts, event tracking
-- **Dynamic target** — change monitored host at runtime without restart
+- **FastAPI server** — REST API for metrics, events, health, alerts, target management, traceroute
+- **React dashboard** — real-time charts, AI insights, alerts, event tracking, traceroute panel
+- **Dynamic target management** — add/remove monitored hosts and change active target at runtime
 - **Event tracking** — timeout, packet loss, and high jitter counters
-- **Docker-ready** — Dockerfile included
+- **Docker-ready** — Dockerfile and Docker Compose included
 
 ---
 
@@ -38,19 +38,23 @@ flowchart LR
     AG -->|Pull| P[Prometheus Endpoint]
     AG --> D[React Dashboard]
     I --> E[/explain endpoint/]
-    E --> L[Local LLM via Ollama]
+    E --> LG[LangGraph Pipeline]
+    LG --> CB[ChromaDB\nVector Store]
+    CB -->|Retrieved chunks| LG
+    LG --> L[Local LLM via Ollama]
     L --> R[AI Diagnostic Output]
 ```
 
-| Layer      | Responsibility                          |
-| ---------- | --------------------------------------- |
-| Collectors | Raw telemetry (ping, traffic, iPerf)    |
-| Analytics  | Derived metrics (rolling mean/std, scoring, stability) |
-| Agent Core | Async orchestration + health state      |
-| Exporters  | InfluxDB + Prometheus adapters          |
-| API        | FastAPI endpoints                       |
-| AI Layer   | LLM-based diagnostic interpretation    |
-| Frontend   | React + TailwindCSS dashboard           |
+| Layer      | Responsibility                                                   |
+| ---------- | ---------------------------------------------------------------- |
+| Collectors | Raw telemetry (ping, HTTP probe, DNS probe, traceroute, traffic) |
+| Analytics  | Derived metrics (rolling mean/std, scoring, stability)           |
+| Agent Core | Async orchestration + health state                               |
+| Exporters  | InfluxDB + Prometheus adapters                                   |
+| API        | FastAPI endpoints                                                |
+| AI Layer   | LangGraph pipeline — classifies health, retrieves relevant runbooks/thresholds from ChromaDB, then queries Ollama |
+| Knowledge  | ChromaDB vector store backed by runbooks, thresholds, incidents  |
+| Frontend   | React + TailwindCSS dashboard                                    |
 
 ---
 
@@ -150,8 +154,6 @@ The dashboard starts on **http://localhost:5173** and connects to the backend AP
 
 ---
 
----
-
 ## API Endpoints
 
 ### Health & Status
@@ -176,16 +178,34 @@ The dashboard starts on **http://localhost:5173** and connects to the backend AP
 | GET    | `/api/events`       | Network event counters   |
 | POST   | `/api/events/reset` | Reset all event counters |
 
+### Alerts
+
+| Method | Endpoint               | Description                          |
+| ------ | ---------------------- | ------------------------------------ |
+| GET    | `/api/alerts`          | Active alerts list                   |
+| POST   | `/api/alerts/dismiss`  | Dismiss alert by ID (API key required) |
+| POST   | `/api/alerts/clear`    | Clear all alerts (API key required)  |
+
 ### Target Configuration
 
-| Method | Endpoint       | Description                   |
-| ------ | -------------- | ----------------------------- |
-| GET    | `/api/target`  | Get current monitoring target |
-| POST   | `/api/target`  | Change target at runtime      |
+| Method | Endpoint               | Description                           |
+| ------ | ---------------------- | ------------------------------------- |
+| GET    | `/api/target`          | Get current monitoring target         |
+| POST   | `/api/target`          | Change active target at runtime       |
+| GET    | `/api/targets`         | All monitored targets with metrics    |
+| POST   | `/api/targets/add`     | Add a monitoring target (API key required) |
+| POST   | `/api/targets/remove`  | Remove a monitoring target (API key required) |
 
 ```bash
 curl -X POST "http://localhost:8000/api/target?target=google.com"
 ```
+
+### Traceroute
+
+| Method | Endpoint                  | Description                          |
+| ------ | ------------------------- | ------------------------------------ |
+| POST   | `/api/traceroute`         | Run traceroute to a host (API key required) |
+| GET    | `/api/traceroute/latest`  | Last traceroute result               |
 
 ### AI Diagnostic
 
@@ -210,6 +230,15 @@ Test coverage includes: config loading, collectors, exporters, analytics, and ma
 ---
 
 ## Docker
+
+### Docker Compose (recommended)
+
+Starts the backend, frontend, InfluxDB, Prometheus, and Grafana together:
+
+```bash
+cd docker
+docker compose up -d
+```
 
 ### Dockerfile
 
@@ -311,6 +340,9 @@ netmonitor/
 │   ├── collectors/
 │   │   ├── base.py          # BaseCollector interface
 │   │   ├── ping.py          # ICMP ping collector
+│   │   ├── http_probe.py    # HTTP probe collector
+│   │   ├── dns_probe.py     # DNS probe collector
+│   │   ├── traceroute.py    # Traceroute collector
 │   │   ├── traffic.py       # Network traffic (psutil)
 │   │   └── iperf.py         # iPerf collector
 │   ├── analytics/
@@ -326,7 +358,9 @@ netmonitor/
 │   │   ├── server.py        # FastAPI app + routes
 │   │   └── routes.py        # Route definitions
 │   ├── ai/
-│   │   └── analyzer.py      # LLM integration (Ollama)
+│   │   ├── analyzer.py      # Public API — fetch_recent_summary / generate_explanation
+│   │   ├── graph.py         # LangGraph diagnostic pipeline
+│   │   └── vector_store.py  # ChromaDB retrieval (RAG)
 │   ├── config/
 │   │   ├── config.yaml      # YAML configuration
 │   │   ├── config.py        # Legacy config helpers
@@ -350,10 +384,17 @@ netmonitor/
 │           ├── MetricsCard.jsx
 │           ├── NetworkChart.jsx
 │           ├── OperationalStatusPanel.jsx
-│           └── PacketLossEventsPanel.jsx
+│           ├── PacketLossEventsPanel.jsx
+│           ├── ProbesPanel.jsx
+│           ├── TargetManager.jsx
+│           └── TraceroutePanel.jsx
 ├── docker/
 │   ├── Dockerfile
 │   └── docker-compose.yml
+├── knowledge/               # RAG knowledge base for AI diagnostics
+│   ├── runbooks/            # High latency, jitter, packet loss runbooks
+│   ├── thresholds/          # Network baseline thresholds
+│   └── incidents/           # Historical incident patterns
 ├── docs/                    # Extended documentation
 ├── tests/                   # pytest test suite
 ├── logs/                    # Runtime logs
