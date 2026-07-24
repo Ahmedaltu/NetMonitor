@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Header } from './components/Header';
 import { MetricsGrid } from './components/MetricsCard';
 import { NetworkChart } from './components/NetworkChart';
@@ -11,99 +11,76 @@ import { TraceroutePanel } from './components/TraceroutePanel';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
-function fetchAgentStatus(timeWindow) {
-  return fetch(`${API_BASE}/api/agent/status?window=${timeWindow}`)
-    .then(res => res.ok ? res.json() : Promise.reject('Failed to fetch'));
-}
+const api = (path, opts) =>
+  fetch(`${API_BASE}${path}`, opts).then(res => res.ok ? res.json() : Promise.reject(`Request failed: ${path}`));
 
-function fetchHealth() {
-  return fetch(`${API_BASE}/health`)
-    .then(res => res.ok ? res.json() : Promise.reject('Failed to fetch health'));
-}
+const timeFmt = ts => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-function fetchExplanation(windowMinutes = 30) {
-  return fetch(`${API_BASE}/explain?window=${windowMinutes}`)
-    .then(res => res.ok ? res.json() : Promise.reject('Failed to fetch explanation'));
-}
+// KPI card definitions: key = history/sparkline field, src = /api/metrics field when it differs
+const KPI_DEFS = [
+  { key: 'latency', label: 'Avg Latency', unit: 'ms', type: 'latency', fmt: v => v.toFixed(1), trend: true, change: true },
+  { key: 'rolling_mean', src: 'rolling_mean_latency', label: 'Rolling Mean', unit: 'ms', type: 'latency', fmt: v => v.toFixed(1), trend: true },
+  { key: 'packet_loss', label: 'Packet Loss', unit: '%', type: 'packetLoss', fmt: v => (v * 100).toFixed(2) },
+  { key: 'jitter', label: 'Jitter', unit: 'ms', type: 'jitter', fmt: v => v.toFixed(2), trend: true, change: true },
+  { key: 'delay_spread', label: 'Delay Spread', unit: 'ms', type: 'latency', fmt: v => v.toFixed(1), trend: true },
+  { key: 'rolling_std', src: 'rolling_std_latency', label: 'Std Dev', unit: 'ms', type: 'latency', fmt: v => v.toFixed(2), trend: true },
+  { key: 'throughput', label: 'Throughput', unit: 'Mbps', type: 'bandwidth', fmt: v => v },
+  { key: 'error_rate', label: 'Error Rate', unit: '%', type: 'packetLoss', fmt: v => (v * 100).toFixed(2) },
+  { key: 'availability', label: 'Availability', unit: '%', type: 'latency', fmt: v => (v * 100).toFixed(2) },
+  { key: 'uptime', label: 'Uptime', unit: '%', type: 'latency', fmt: v => v.toFixed(2) },
+  { key: 'anomaly_score', label: 'Anomaly Score', unit: '', type: 'jitter', fmt: v => v.toFixed(2) },
+  // invert: rising quality is good, so the trend arrows are flipped on purpose
+  { key: 'quality_score', label: 'Quality Score', unit: '/100', type: 'quality', fmt: v => v.toFixed(1), trend: true, invert: true },
+];
 
-function fetchMetrics() {
-  return fetch(`${API_BASE}/api/metrics`)
-    .then(res => res.ok ? res.json() : Promise.reject('Failed to fetch metrics'));
-}
-
-function fetchEvents() {
-  return fetch(`${API_BASE}/api/events`)
-    .then(res => res.ok ? res.json() : Promise.reject('Failed to fetch events'));
-}
-
-function fetchTarget() {
-  return fetch(`${API_BASE}/api/target`)
-    .then(res => res.ok ? res.json() : Promise.reject('Failed to fetch target'));
-}
-
-function setTarget(target) {
-  return fetch(`${API_BASE}/api/target?target=${encodeURIComponent(target)}`, { method: 'POST' })
-    .then(res => res.ok ? res.json() : Promise.reject('Failed to set target'));
-}
-
-function fetchHistory(target) {
-  const params = target ? `?target=${encodeURIComponent(target)}` : '';
-  return fetch(`${API_BASE}/api/metrics/history${params}`)
-    .then(res => res.ok ? res.json() : Promise.reject('Failed to fetch history'));
-}
-
-function fetchTargets() {
-  return fetch(`${API_BASE}/api/targets`)
-    .then(res => res.ok ? res.json() : Promise.reject('Failed to fetch targets'));
-}
-
-function addTarget(target) {
-  return fetch(`${API_BASE}/api/targets/add?target=${encodeURIComponent(target)}`, { method: 'POST' })
-    .then(res => res.ok ? res.json() : Promise.reject('Failed to add target'));
-}
-
-function removeTarget(target) {
-  return fetch(`${API_BASE}/api/targets/remove?target=${encodeURIComponent(target)}`, { method: 'POST' })
-    .then(res => res.ok ? res.json() : Promise.reject('Failed to remove target'));
-}
-
-function fetchHttpProbes() {
-  return fetch(`${API_BASE}/api/probes/http`)
-    .then(res => res.ok ? res.json() : Promise.reject('Failed to fetch HTTP probes'));
-}
-
-function fetchDnsProbes() {
-  return fetch(`${API_BASE}/api/probes/dns`)
-    .then(res => res.ok ? res.json() : Promise.reject('Failed to fetch DNS probes'));
-}
-
-// Generate sparkline from history array
 function generateSparklineFromHistory(history, key, count = 12) {
-  if (!history || history.length === 0) {
-    return Array(count).fill(0);
-  }
+  if (!history || history.length === 0) return Array(count).fill(0);
   const values = history.slice(-count).map(h => h[key] ?? 0);
-  while (values.length < count) {
-    values.unshift(values[0] || 0);
-  }
-  return values;
+  return Array(count - values.length).fill(values[0] || 0).concat(values);
 }
 
-// Generate chart data from history
 function generateChartDataFromHistory(history, key, count = 20) {
-  if (!history || history.length === 0) {
-    return [];
-  }
-  return history.slice(-count).map(h => ({
-    label: h.time,
-    value: h[key] ?? 0,
-  }));
+  if (!history || history.length === 0) return [];
+  return history.slice(-count).map(h => ({ label: h.time, value: h[key] ?? 0 }));
 }
 
-// Initial log entries (empty - will be populated from real data)
-function generateInitialLogs() {
-  return [];
+const getTrend = (current, prev) => {
+  if (prev === null || prev === undefined) return 'stable';
+  if (current > prev * 1.05) return 'up';
+  if (current < prev * 0.95) return 'down';
+  return 'stable';
+};
+
+function buildMetrics(data, prevData, history) {
+  return KPI_DEFS.map(def => {
+    const v = data[def.src ?? def.key];
+    const prevV = prevData?.[def.key];
+    return {
+      type: def.type === 'quality'
+        ? (data.quality_score >= 80 ? 'latency' : data.quality_score >= 50 ? 'jitter' : 'packetLoss')
+        : def.type,
+      label: def.label,
+      unit: def.unit,
+      value: v == null ? '--' : def.fmt(v),
+      trend: def.key === 'packet_loss' ? (v > 0 ? 'up' : 'stable')
+        : !def.trend ? 'stable'
+        : def.invert ? getTrend(prevV, v)
+        : getTrend(v, prevV),
+      change: def.change && prevV ? `${((v - prevV) / (prevV || 1) * 100).toFixed(1)}%` : '0%',
+      sparkline: generateSparklineFromHistory(history, def.key),
+    };
+  });
 }
+
+const mapHistoryEntry = m => ({
+  time: m.timestamp ? timeFmt(m.timestamp) : '',
+  latency: m.latency,
+  packet_loss: m.packet_loss,
+  jitter: m.jitter,
+  delay_spread: m.delay_spread,
+  rolling_mean: m.rolling_mean_latency,
+  rolling_std: m.rolling_std_latency,
+});
 
 export default function App() {
   const [darkMode, setDarkMode] = useState(false);
@@ -111,29 +88,27 @@ export default function App() {
   const [healthState, setHealthState] = useState('running');
   const [timeWindow, setTimeWindow] = useState('5m');
   const [loading, setLoading] = useState(false);
-  
+
   // Monitoring controls
   const [monitoredServer, setMonitoredServer] = useState('8.8.8.8');
   const [monitoringStatus, setMonitoringStatus] = useState('stable'); // stable, unstable, disconnected
   const [isMonitoring, setIsMonitoring] = useState(true);
-  const [targets, setTargets] = useState([]);  // Multi-target list from backend
+  const [targets, setTargets] = useState([]);
 
-  // KPI Metrics (6 cards)
-  const [metrics, setMetrics] = useState([
-    { type: 'latency', label: 'Avg Latency', value: '--', unit: 'ms', trend: 'stable', change: '0%', sparkline: [] },
-    { type: 'latency', label: 'Rolling Mean', value: '--', unit: 'ms', trend: 'stable', change: '0%', sparkline: [] },
-    { type: 'packetLoss', label: 'Packet Loss', value: '--', unit: '%', trend: 'stable', change: '0%', sparkline: [] },
-    { type: 'jitter', label: 'Jitter', value: '--', unit: 'ms', trend: 'stable', change: '0%', sparkline: [] },
-    { type: 'latency', label: 'Delay Spread', value: '--', unit: 'ms', trend: 'stable', change: '0%', sparkline: [] },
-    { type: 'latency', label: 'Std Dev', value: '--', unit: 'ms', trend: 'stable', change: '0%', sparkline: [] },
-  ]);
+  const [metrics, setMetrics] = useState(KPI_DEFS.map(d => ({
+    type: d.type === 'quality' ? 'latency' : d.type,
+    label: d.label,
+    unit: d.unit,
+    value: '--',
+    trend: 'stable',
+    change: '0%',
+    sparkline: [],
+  })));
 
   // Chart data
   const [latencyData, setLatencyData] = useState([]);
   const [jitterData, setJitterData] = useState([]);
   const [packetLossData, setPacketLossData] = useState([]);
-
-  // Metrics history for charts
   const [metricsHistory, setMetricsHistory] = useState([]);
 
   // Packet loss and events
@@ -145,11 +120,8 @@ export default function App() {
     recent: []
   });
 
-  // Alerts derived from events
   const [alerts, setAlerts] = useState([]);
-
-  // Logs
-  const [logs, setLogs] = useState(generateInitialLogs());
+  const [logs, setLogs] = useState([]);
 
   // Health details from /health endpoint
   const [healthDetails, setHealthDetails] = useState({
@@ -170,17 +142,30 @@ export default function App() {
   const [httpProbes, setHttpProbes] = useState({});
   const [dnsProbes, setDnsProbes] = useState({});
 
+  const setCharts = (hist) => {
+    setLatencyData(generateChartDataFromHistory(hist, 'latency'));
+    setJitterData(generateChartDataFromHistory(hist, 'jitter'));
+    setPacketLossData(generateChartDataFromHistory(hist, 'packet_loss'));
+  };
+
+  const loadHistory = (target) => {
+    const q = target ? `?target=${encodeURIComponent(target)}` : '';
+    return api(`/api/metrics/history${q}`).then(data => {
+      if (data.history && data.history.length > 0) {
+        const hist = data.history.map(mapHistoryEntry);
+        setMetricsHistory(hist);
+        setCharts(hist);
+      }
+    });
+  };
+
   useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+    document.documentElement.classList.toggle('dark', darkMode);
   }, [darkMode]);
 
   useEffect(() => {
     setLoading(true);
-    fetchAgentStatus(timeWindow)
+    api(`/api/agent/status?window=${timeWindow}`)
       .then(data => {
         setAgentId(data.agentId);
         setHealthState(data.healthState);
@@ -194,7 +179,7 @@ export default function App() {
     if (!isMonitoring) return;
 
     const fetchHealthData = () => {
-      fetchHealth()
+      api('/health')
         .then(data => {
           setAgentId(data.agent_id);
           setHealthState(data.state);
@@ -203,18 +188,9 @@ export default function App() {
             lastCycle: data.last_cycle,
             consecutiveFailures: data.consecutive_failures
           });
-          // Update monitoring status based on health
-          if (data.state === 'running') {
-            setMonitoringStatus('stable');
-          } else if (data.state === 'degraded') {
-            setMonitoringStatus('unstable');
-          } else {
-            setMonitoringStatus('disconnected');
-          }
+          setMonitoringStatus(data.state === 'running' ? 'stable' : data.state === 'degraded' ? 'unstable' : 'disconnected');
         })
-        .catch(() => {
-          setMonitoringStatus('disconnected');
-        });
+        .catch(() => setMonitoringStatus('disconnected'));
     };
 
     fetchHealthData();
@@ -222,11 +198,10 @@ export default function App() {
     return () => clearInterval(interval);
   }, [isMonitoring]);
 
-  // Fetch AI explanation
-  const handleFetchExplanation = useCallback(() => {
+  const handleFetchExplanation = () => {
     setAiAnalysis(prev => ({ ...prev, loading: true, error: null }));
     const windowMinutes = timeWindow === '5m' ? 5 : timeWindow === '15m' ? 15 : timeWindow === '1h' ? 60 : 1440;
-    fetchExplanation(windowMinutes)
+    api(`/explain?window=${windowMinutes}`)
       .then(data => {
         setAiAnalysis(prev => ({
           ...prev,
@@ -239,26 +214,20 @@ export default function App() {
           error: null
         }));
       })
-      .catch(err => {
-        setAiAnalysis(prev => ({
-          ...prev,
-          loading: false,
-          error: 'Failed to fetch AI analysis'
-        }));
+      .catch(() => {
+        setAiAnalysis(prev => ({ ...prev, loading: false, error: 'Failed to fetch AI analysis' }));
       });
-  }, [timeWindow]);
+  };
 
-  // Auto-refresh data every 10 seconds (only when monitoring)
+  // Auto-refresh metrics every 10 seconds (only when monitoring)
   useEffect(() => {
     if (!isMonitoring) return;
 
     const fetchLatestMetrics = () => {
-      fetchMetrics()
+      api('/api/metrics')
         .then(data => {
-          // Get current time for chart labels
-          const now = new Date();
-          const timeLabel = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-          
+          const timeLabel = timeFmt(Date.now());
+
           // Add to history (keep last 30 points)
           setMetricsHistory(prev => {
             const newHistory = [...prev, {
@@ -271,210 +240,59 @@ export default function App() {
               rolling_std: data.rolling_std_latency,
               quality_score: data.quality_score,
             }].slice(-30);
-            
-            // Update chart data from history
-            setLatencyData(generateChartDataFromHistory(newHistory, 'latency'));
-            setJitterData(generateChartDataFromHistory(newHistory, 'jitter'));
-            setPacketLossData(generateChartDataFromHistory(newHistory, 'packet_loss'));
-            
-            // Calculate trends
-            const getTrend = (current, prev) => {
-              if (prev === null || prev === undefined) return 'stable';
-              if (current > prev * 1.05) return 'up';
-              if (current < prev * 0.95) return 'down';
-              return 'stable';
-            };
-            
+
+            setCharts(newHistory);
             const prevData = prev.length > 1 ? prev[prev.length - 1] : null;
-            
-            // Update KPI metrics with real data
-            setMetrics([
-              { 
-                type: 'latency', 
-                label: 'Avg Latency', 
-                value: data.latency?.toFixed(1) ?? '--', 
-                unit: 'ms', 
-                trend: getTrend(data.latency, prevData?.latency),
-                change: prevData?.latency ? `${((data.latency - prevData.latency) / (prevData.latency || 1) * 100).toFixed(1)}%` : '0%',
-                sparkline: generateSparklineFromHistory(newHistory, 'latency')
-              },
-              { 
-                type: 'latency', 
-                label: 'Rolling Mean', 
-                value: data.rolling_mean_latency?.toFixed(1) ?? '--', 
-                unit: 'ms', 
-                trend: getTrend(data.rolling_mean_latency, prevData?.rolling_mean),
-                change: '0%',
-                sparkline: generateSparklineFromHistory(newHistory, 'rolling_mean')
-              },
-              { 
-                type: 'packetLoss', 
-                label: 'Packet Loss', 
-                value: data.packet_loss !== null ? (data.packet_loss * 100).toFixed(2) : '--', 
-                unit: '%', 
-                trend: data.packet_loss > 0 ? 'up' : 'stable',
-                change: '0%',
-                sparkline: generateSparklineFromHistory(newHistory, 'packet_loss')
-              },
-              { 
-                type: 'jitter', 
-                label: 'Jitter', 
-                value: data.jitter?.toFixed(2) ?? '--', 
-                unit: 'ms', 
-                trend: getTrend(data.jitter, prevData?.jitter),
-                change: prevData?.jitter ? `${((data.jitter - prevData.jitter) / (prevData.jitter || 1) * 100).toFixed(1)}%` : '0%',
-                sparkline: generateSparklineFromHistory(newHistory, 'jitter')
-              },
-              { 
-                type: 'latency', 
-                label: 'Delay Spread', 
-                value: data.delay_spread?.toFixed(1) ?? '--', 
-                unit: 'ms', 
-                trend: getTrend(data.delay_spread, prevData?.delay_spread),
-                change: '0%',
-                sparkline: generateSparklineFromHistory(newHistory, 'delay_spread')
-              },
-              { 
-                type: 'latency', 
-                label: 'Std Dev', 
-                value: data.rolling_std_latency?.toFixed(2) ?? '--', 
-                unit: 'ms', 
-                trend: getTrend(data.rolling_std_latency, prevData?.rolling_std),
-                change: '0%',
-                sparkline: generateSparklineFromHistory(newHistory, 'rolling_std')
-              },
-              { 
-                type: 'bandwidth', 
-                label: 'Throughput', 
-                value: data.throughput !== null && data.throughput !== undefined ? data.throughput : '--', 
-                unit: 'Mbps', 
-                trend: 'stable',
-                change: '0%',
-                sparkline: generateSparklineFromHistory(newHistory, 'throughput')
-              },
-              { 
-                type: 'packetLoss', 
-                label: 'Error Rate', 
-                value: data.error_rate !== null && data.error_rate !== undefined ? (data.error_rate * 100).toFixed(2) : '--', 
-                unit: '%', 
-                trend: 'stable',
-                change: '0%',
-                sparkline: generateSparklineFromHistory(newHistory, 'error_rate')
-              },
-              { 
-                type: 'latency', 
-                label: 'Availability', 
-                value: data.availability !== null && data.availability !== undefined ? (data.availability * 100).toFixed(2) : '--', 
-                unit: '%', 
-                trend: 'stable',
-                change: '0%',
-                sparkline: generateSparklineFromHistory(newHistory, 'availability')
-              },
-              { 
-                type: 'latency', 
-                label: 'Uptime', 
-                value: data.uptime !== null && data.uptime !== undefined ? data.uptime.toFixed(2) : '--', 
-                unit: '%', 
-                trend: 'stable',
-                change: '0%',
-                sparkline: generateSparklineFromHistory(newHistory, 'uptime')
-              },
-              { 
-                type: 'jitter', 
-                label: 'Anomaly Score', 
-                value: data.anomaly_score !== null && data.anomaly_score !== undefined ? data.anomaly_score.toFixed(2) : '--', 
-                unit: '', 
-                trend: 'stable',
-                change: '0%',
-                sparkline: generateSparklineFromHistory(newHistory, 'anomaly_score')
-              },
-              { 
-                type: data.quality_score >= 80 ? 'latency' : data.quality_score >= 50 ? 'jitter' : 'packetLoss', 
-                label: 'Quality Score', 
-                value: data.quality_score?.toFixed(1) ?? '--', 
-                unit: '/100', 
-                trend: getTrend(prevData?.quality_score, data.quality_score),
-                change: '0%',
-                sparkline: generateSparklineFromHistory(newHistory, 'quality_score')
-              },
-            ]);
-            
-            // Update packet loss for the gauge panel
+            setMetrics(buildMetrics(data, prevData, newHistory));
             setPacketLoss(data.packet_loss ?? 0);
-            
-            // Add log entry for the metrics fetch
-            setLogs(prevLogs => {
-              const newLog = {
-                time: timeLabel,
-                level: data.packet_loss > 0 ? 'warn' : 'info',
-                message: `Ping to target: ${data.latency?.toFixed(1) ?? 'N/A'}ms, Loss: ${((data.packet_loss ?? 0) * 100).toFixed(1)}%`
-              };
-              return [newLog, ...prevLogs].slice(0, 50);
-            });
-            
+
+            setLogs(prevLogs => [{
+              time: timeLabel,
+              level: data.packet_loss > 0 ? 'warn' : 'info',
+              message: `Ping to target: ${data.latency?.toFixed(1) ?? 'N/A'}ms, Loss: ${((data.packet_loss ?? 0) * 100).toFixed(1)}%`
+            }, ...prevLogs].slice(0, 50));
+
             return newHistory;
           });
         })
-        .catch(err => {
-          console.error('Failed to fetch metrics:', err);
-        });
+        .catch(err => console.error('Failed to fetch metrics:', err));
     };
 
-    // Fetch immediately and then every 10 seconds
     fetchLatestMetrics();
     const interval = setInterval(fetchLatestMetrics, 10000);
-
     return () => clearInterval(interval);
   }, [isMonitoring]);
 
   // Fetch events periodically
   useEffect(() => {
     if (!isMonitoring) return;
-
-    const fetchEventsData = () => {
-      fetchEvents()
-        .then(data => {
-          setEvents(data);
-        })
-        .catch(err => {
-          console.error('Failed to fetch events:', err);
-        });
-    };
-
-    fetchEventsData();
-    const interval = setInterval(fetchEventsData, 10000);
+    const load = () => api('/api/events').then(setEvents).catch(err => console.error('Failed to fetch events:', err));
+    load();
+    const interval = setInterval(load, 10000);
     return () => clearInterval(interval);
   }, [isMonitoring]);
 
   // Fetch probe results periodically
   useEffect(() => {
     if (!isMonitoring) return;
-    const loadProbes = () => {
-      fetchHttpProbes().then(d => setHttpProbes(d.probes || {})).catch(() => {});
-      fetchDnsProbes().then(d => setDnsProbes(d.probes || {})).catch(() => {});
+    const load = () => {
+      api('/api/probes/http').then(d => setHttpProbes(d.probes || {})).catch(() => {});
+      api('/api/probes/dns').then(d => setDnsProbes(d.probes || {})).catch(() => {});
     };
-    loadProbes();
-    const interval = setInterval(loadProbes, 15000);
+    load();
+    const interval = setInterval(load, 15000);
     return () => clearInterval(interval);
   }, [isMonitoring]);
 
   // Fetch initial target from backend
   useEffect(() => {
-    fetchTarget()
-      .then(data => {
-        setMonitoredServer(data.target);
-      })
-      .catch(() => {});
+    api('/api/target').then(data => setMonitoredServer(data.target)).catch(() => {});
   }, []);
 
   // Fetch targets list periodically
   useEffect(() => {
     if (!isMonitoring) return;
-    const load = () => {
-      fetchTargets()
-        .then(data => setTargets(data.targets || []))
-        .catch(() => {});
-    };
+    const load = () => api('/api/targets').then(data => setTargets(data.targets || [])).catch(() => {});
     load();
     const interval = setInterval(load, 15000);
     return () => clearInterval(interval);
@@ -482,126 +300,66 @@ export default function App() {
 
   // Load server-side metrics history on mount
   useEffect(() => {
-    fetchHistory()
-      .then(data => {
-        if (data.history && data.history.length > 0) {
-          const serverHistory = data.history.map(m => ({
-            time: m.timestamp ? new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '',
-            latency: m.latency,
-            packet_loss: m.packet_loss,
-            jitter: m.jitter,
-            delay_spread: m.delay_spread,
-            rolling_mean: m.rolling_mean_latency,
-            rolling_std: m.rolling_std_latency,
-          }));
-          setMetricsHistory(serverHistory);
-          setLatencyData(generateChartDataFromHistory(serverHistory, 'latency'));
-          setJitterData(generateChartDataFromHistory(serverHistory, 'jitter'));
-          setPacketLossData(generateChartDataFromHistory(serverHistory, 'packet_loss'));
-        }
-      })
-      .catch(() => {});
+    loadHistory().catch(() => {});
   }, []);
 
   // Convert events to alerts for AlertsPanel
   useEffect(() => {
     if (events.recent && events.recent.length > 0) {
-      const newAlerts = events.recent.map((event, index) => ({
+      setAlerts(events.recent.map((event, index) => ({
         id: `${event.type}-${event.time}-${index}`,
         severity: event.type === 'timeout' ? 'critical' : 'warning',
         time: event.time,
         title: event.type === 'timeout' ? 'Connection Timeout' :
                event.type === 'packet_loss' ? 'Packet Loss Detected' : 'High Jitter',
         message: event.message,
-      }));
-      setAlerts(newAlerts);
+      })));
     } else {
       setAlerts([]);
     }
   }, [events]);
 
-  const handleClearLogs = useCallback(() => {
-    setLogs([]);
-  }, []);
+  const handleClearLogs = () => setLogs([]);
+  const handleDismissAlert = (alertId) => setAlerts(prev => prev.filter(a => a.id !== alertId));
+  const handleClearAlerts = () => setAlerts([]);
 
-  const handleDismissAlert = useCallback((alertId) => {
-    setAlerts(prev => prev.filter(a => a.id !== alertId));
-  }, []);
+  const handleToggleMonitoring = () => {
+    setMonitoringStatus(isMonitoring ? 'disconnected' : 'stable');
+    setIsMonitoring(prev => !prev);
+  };
 
-  const handleClearAlerts = useCallback(() => {
-    setAlerts([]);
-  }, []);
-
-  const handleToggleMonitoring = useCallback(() => {
-    setIsMonitoring(prev => {
-      if (prev) {
-        // Stopping monitoring
-        setMonitoringStatus('disconnected');
-      } else {
-        // Starting monitoring
-        setMonitoringStatus('stable');
-      }
-      return !prev;
-    });
-  }, []);
-
-  const handleServerChange = useCallback((newServer) => {
+  const handleServerChange = (newServer) => {
     setMonitoredServer(newServer);
-    // Update backend target
-    setTarget(newServer)
-      .then(data => {
-        console.log('Target updated to:', data.target);
-      })
-      .catch(err => {
-        console.error('Failed to update target:', err);
-      });
-  }, []);
+    api(`/api/target?target=${encodeURIComponent(newServer)}`, { method: 'POST' })
+      .then(data => console.log('Target updated to:', data.target))
+      .catch(err => console.error('Failed to update target:', err));
+  };
 
-  const handleTargetSelect = useCallback((target) => {
+  const handleTargetSelect = (target) => {
     setMonitoredServer(target);
-    setTarget(target)
-      .then(() => fetchHistory(target))
-      .then(data => {
-        if (data.history && data.history.length > 0) {
-          const serverHistory = data.history.map(m => ({
-            time: m.timestamp ? new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '',
-            latency: m.latency,
-            packet_loss: m.packet_loss,
-            jitter: m.jitter,
-            delay_spread: m.delay_spread,
-            rolling_mean: m.rolling_mean_latency,
-            rolling_std: m.rolling_std_latency,
-          }));
-          setMetricsHistory(serverHistory);
-          setLatencyData(generateChartDataFromHistory(serverHistory, 'latency'));
-          setJitterData(generateChartDataFromHistory(serverHistory, 'jitter'));
-          setPacketLossData(generateChartDataFromHistory(serverHistory, 'packet_loss'));
-        }
-      })
+    api(`/api/target?target=${encodeURIComponent(target)}`, { method: 'POST' })
+      .then(() => loadHistory(target))
       .catch(err => console.error('Failed to switch target:', err));
-  }, []);
+  };
 
-  const handleAddTarget = useCallback((target) => {
-    addTarget(target)
-      .then(() => fetchTargets())
-      .then(data => setTargets(data.targets || []))
+  const reloadTargets = () => api('/api/targets').then(data => setTargets(data.targets || []));
+
+  const handleAddTarget = (target) => {
+    api(`/api/targets/add?target=${encodeURIComponent(target)}`, { method: 'POST' })
+      .then(reloadTargets)
       .catch(err => console.error('Failed to add target:', err));
-  }, []);
+  };
 
-  const handleRemoveTarget = useCallback((target) => {
-    removeTarget(target)
-      .then(() => fetchTargets())
-      .then(data => setTargets(data.targets || []))
+  const handleRemoveTarget = (target) => {
+    api(`/api/targets/remove?target=${encodeURIComponent(target)}`, { method: 'POST' })
+      .then(reloadTargets)
       .catch(err => console.error('Failed to remove target:', err));
-  }, []);
+  };
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900 transition-colors">
-      {/* --------------------------------------------------------- */}
-      {/* HEADER BAR                                                */}
-      {/* --------------------------------------------------------- */}
-      <Header 
-        darkMode={darkMode} 
+      <Header
+        darkMode={darkMode}
         onToggleDarkMode={() => setDarkMode(!darkMode)}
         agentId={agentId}
         healthState={healthState}
@@ -615,11 +373,8 @@ export default function App() {
         targets={targets}
         onTargetSelect={handleTargetSelect}
       />
-      
+
       <main className="max-w-7xl mx-auto px-4 py-4 space-y-4">
-        {/* --------------------------------------------------------- */}
-        {/* TARGET MANAGER                                           */}
-        {/* --------------------------------------------------------- */}
         <TargetManager
           targets={targets}
           activeTarget={monitoredServer}
@@ -628,70 +383,50 @@ export default function App() {
           onRemove={handleRemoveTarget}
         />
 
-        {/* --------------------------------------------------------- */}
-        {/* KPI CARDS (6 live indicators)                            */}
-        {/* --------------------------------------------------------- */}
         <MetricsGrid metrics={metrics} />
 
-        {/* --------------------------------------------------------- */}
-        {/* LATENCY GRAPH  |  JITTER GRAPH                           */}
-        {/* --------------------------------------------------------- */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <NetworkChart 
-            data={latencyData} 
-            title="Latency (Live)" 
+          <NetworkChart
+            data={latencyData}
+            title="Latency (Live)"
             yLabel="ms"
             color="blue"
           />
-          <NetworkChart 
-            data={jitterData} 
-            title="Jitter (Live)" 
+          <NetworkChart
+            data={jitterData}
+            title="Jitter (Live)"
             yLabel="ms"
             color="green"
           />
         </div>
 
-        {/* --------------------------------------------------------- */}
-        {/* PACKET LOSS CHART  |  PACKET LOSS + EVENTS               */}
-        {/* --------------------------------------------------------- */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <NetworkChart 
-            data={packetLossData} 
-            title="Packet Loss (Live)" 
+          <NetworkChart
+            data={packetLossData}
+            title="Packet Loss (Live)"
             yLabel="%"
             color="purple"
           />
-          <PacketLossEventsPanel 
-            packetLoss={packetLoss} 
+          <PacketLossEventsPanel
+            packetLoss={packetLoss}
             events={events}
           />
         </div>
 
-        {/* --------------------------------------------------------- */}
-        {/* ALERTS PANEL                                             */}
-        {/* --------------------------------------------------------- */}
         <AlertsPanel
           alerts={alerts}
           onDismiss={handleDismissAlert}
           onClearAll={handleClearAlerts}
         />
 
-        {/* --------------------------------------------------------- */}
-        {/* TRACEROUTE PANEL                                         */}
-        {/* --------------------------------------------------------- */}
         <TraceroutePanel target={monitoredServer} />
 
-        {/* --------------------------------------------------------- */}
-        {/* HTTP + DNS PROBES                                        */}
-        {/* --------------------------------------------------------- */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <HttpProbesPanel probes={httpProbes} />
           <DnsProbesPanel probes={dnsProbes} />
         </div>
 
-        {/* --------------------------------------------------------- */}
-        {/* AI ANALYSIS PANEL                                        */}
-        {/* --------------------------------------------------------- */}
+        {/* AI Analysis Panel */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
@@ -723,11 +458,11 @@ export default function App() {
               )}
             </button>
           </div>
-          
+
           {aiAnalysis.error && (
             <div className="text-red-500 text-xs mb-2">{aiAnalysis.error}</div>
           )}
-          
+
           {aiAnalysis.analysis ? (
             <div className="space-y-2">
               {aiAnalysis.summary && (
@@ -759,9 +494,7 @@ export default function App() {
           )}
         </div>
 
-        {/* --------------------------------------------------------- */}
-        {/* HEALTH DETAILS PANEL                                     */}
-        {/* --------------------------------------------------------- */}
+        {/* Health Details Panel */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
           <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
             <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -801,10 +534,7 @@ export default function App() {
           )}
         </div>
 
-        {/* --------------------------------------------------------- */}
-        {/* LOG / STATUS PANEL                                       */}
-        {/* --------------------------------------------------------- */}
-        <LogStatusPanel 
+        <LogStatusPanel
           logs={logs}
           onClear={handleClearLogs}
         />
